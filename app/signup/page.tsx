@@ -9,6 +9,8 @@ import {
   FiLock,
   FiUserPlus,
   FiAlertTriangle,
+  FiEye,
+  FiEyeOff,
 } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
 import { toast, Toaster } from "react-hot-toast";
@@ -32,6 +34,8 @@ const SignupPage = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Check if user is already authenticated
   useEffect(() => {
@@ -288,7 +292,7 @@ const SignupPage = () => {
                 <Input
                   id="password"
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="new-password"
                   placeholder="Password"
                   value={formData.password}
@@ -297,6 +301,17 @@ const SignupPage = () => {
                   className="pl-10 mb-0"
                   disabled={redirecting}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-0 top-0 mt-3 mr-3 text-gray-500 focus:outline-none"
+                >
+                  {showPassword ? (
+                    <FiEyeOff className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <FiEye className="h-5 w-5 text-gray-400" />
+                  )}
+                </button>
                 <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
                   <FiLock className="h-5 w-5 text-gray-400" />
                 </div>
@@ -308,7 +323,7 @@ const SignupPage = () => {
                 <Input
                   id="confirmPassword"
                   name="confirmPassword"
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   autoComplete="new-password"
                   placeholder="Confirm password"
                   value={formData.confirmPassword}
@@ -317,6 +332,17 @@ const SignupPage = () => {
                   className="pl-10 mb-0"
                   disabled={redirecting}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-0 top-0 mt-3 mr-3 text-gray-500 focus:outline-none"
+                >
+                  {showConfirmPassword ? (
+                    <FiEyeOff className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <FiEye className="h-5 w-5 text-gray-400" />
+                  )}
+                </button>
                 <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
                   <FiLock className="h-5 w-5 text-gray-400" />
                 </div>
