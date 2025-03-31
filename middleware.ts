@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
 import * as jose from "jose";
 
-// Initialize rate limiter
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(5, "1 m"), // 5 requests per minute
-  analytics: true,
-});
+// Optional rate limiter
+let ratelimit: any = null;
+try {
+  if (
+    process.env.UPSTASH_REDIS_REST_URL &&
+    process.env.UPSTASH_REDIS_REST_TOKEN
+  ) {
+    const { Ratelimit } = require("@upstash/ratelimit");
+    const { Redis } = require("@upstash/redis");
+
+    // Initialize rate limiter only if Redis is available
+    ratelimit = new Ratelimit({
+      redis: Redis.fromEnv(),
+      limiter: Ratelimit.slidingWindow(5, "1 m"), // 5 requests per minute
+      analytics: true,
+    });
+  }
+} catch (error) {
+  console.error("Failed to initialize rate limiter:", error);
+}
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
@@ -34,8 +46,11 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
 
-  // Rate limiting for auth endpoints
-  if (path === "/api/auth/signin" || path === "/api/auth/signup") {
+  // Rate limiting for auth endpoints - only if Redis is configured
+  if (
+    ratelimit &&
+    (path === "/api/auth/signin" || path === "/api/auth/signup")
+  ) {
     const { success, limit, reset, remaining } = await ratelimit.limit(
       `auth_${ip}`
     );
