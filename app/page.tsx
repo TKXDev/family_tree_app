@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { FiUsers, FiArrowRight, FiGitMerge, FiDatabase } from "react-icons/fi";
 
 const HomePage = () => {
   return (

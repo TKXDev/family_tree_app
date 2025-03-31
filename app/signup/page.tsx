@@ -188,8 +188,8 @@ const SignupPage = () => {
 
       // Note: The code below will never execute due to the redirect option being true
       // The redirection is handled by NextAuth
-    } catch (error) {
-      console.error("Google sign-up error:", error);
+    } catch (_error) {
+      console.error("Google sign-up error:", _error);
       setAuthError("Failed to sign up with Google");
       toast.error("Failed to sign up with Google");
       setIsGoogleLoading(false);

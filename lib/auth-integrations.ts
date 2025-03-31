@@ -1,6 +1,6 @@
 import { useSession, signOut } from "next-auth/react";
 import { useEffect } from "react";
-import { setUserAndToken, getUser } from "@/lib/auth";
+import { setUserAndToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { User } from "./auth";
 
@@ -61,15 +61,17 @@ export function useNextAuthIntegration() {
   };
 }
 
-export const getUserFromSession = (session: any): User | null => {
+export const getUserFromSession = (session: {
+  user?: Record<string, unknown>;
+}): User | null => {
   if (!session?.user) {
     return null;
   }
 
   return {
-    _id: session.user.id || "",
-    name: session.user.name || "",
-    email: session.user.email || "",
-    role: (session.user as any).role || "user",
+    _id: (session.user.id as string) || "",
+    name: (session.user.name as string) || "",
+    email: (session.user.email as string) || "",
+    role: (session.user.role as string) || "user",
   };
 };

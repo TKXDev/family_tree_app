@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 }
 
 // Helper function to generate JWT token
-function generateToken(id: string) {
+function generateToken(_id: string) {
   // This is just a placeholder - you would typically use jwt.sign here
   // For example: return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
   return "token_placeholder";
