@@ -1,4 +1,5 @@
 import Cookies from "js-cookie";
+import { z, ZodError } from "zod";
 
 export interface User {
   _id: string;
@@ -11,6 +12,16 @@ export interface User {
 const TOKEN_COOKIE = "token";
 const PERSISTENT_LOGIN = "persistent_login";
 
+// Validation schemas
+const emailSchema = z.string().email("Invalid email address");
+const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/,
+    "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+  );
+
 // Store user data and token in cookies
 export const setUserAndToken = (
   user: User,
@@ -20,13 +31,27 @@ export const setUserAndToken = (
   // Set cookie expiration based on remember me option
   if (rememberMe) {
     // If remember me is checked, set a long expiration (30 days)
-    Cookies.set(TOKEN_COOKIE, token, { expires: 30 });
-    Cookies.set(PERSISTENT_LOGIN, "true", { expires: 30 });
+    Cookies.set(TOKEN_COOKIE, token, {
+      expires: 30,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
+    Cookies.set(PERSISTENT_LOGIN, "true", {
+      expires: 30,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
     // Store user in localStorage for persistent login
     localStorage.setItem("user", JSON.stringify(user));
   } else {
     // If remember me is NOT checked, use session cookies (expire when browser closes)
-    Cookies.set(TOKEN_COOKIE, token); // No expires parameter means it's a session cookie
+    Cookies.set(TOKEN_COOKIE, token, {
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
     Cookies.remove(PERSISTENT_LOGIN);
     // For session-only login, store user in sessionStorage instead of localStorage
     sessionStorage.setItem("user", JSON.stringify(user));
@@ -74,30 +99,94 @@ export const logout = () => {
   sessionStorage.removeItem("user");
 };
 
+// Validate email and password
+export const validateCredentials = (email: string, password: string) => {
+  try {
+    emailSchema.parse(email);
+    passwordSchema.parse(password);
+    return { isValid: true, errors: null };
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return {
+        isValid: false,
+        errors: error.errors.map((err: z.ZodIssue) => err.message),
+      };
+    }
+    return {
+      isValid: false,
+      errors: ["An unexpected error occurred"],
+    };
+  }
+};
+
 // Signup user
 export const signup = async (name: string, email: string, password: string) => {
-  const response = await fetch("/api/auth/signup", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name, email, password, role: "user" }),
-  });
+  // Validate credentials first
+  const validation = validateCredentials(email, password);
+  if (!validation.isValid) {
+    return {
+      error: "Validation failed",
+      details: validation.errors,
+    };
+  }
 
-  return await response.json();
+  try {
+    const response = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, email, password, role: "user" }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Signup failed");
+    }
+
+    return data;
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Signup failed",
+      details: error instanceof Error ? error.stack : undefined,
+    };
+  }
 };
 
 // Signin user
 export const signin = async (email: string, password: string) => {
-  const response = await fetch("/api/auth/signin", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, password }),
-  });
+  // Validate credentials first
+  const validation = validateCredentials(email, password);
+  if (!validation.isValid) {
+    return {
+      error: "Validation failed",
+      details: validation.errors,
+    };
+  }
 
-  return await response.json();
+  try {
+    const response = await fetch("/api/auth/signin", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Signin failed");
+    }
+
+    return data;
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Signin failed",
+      details: error instanceof Error ? error.stack : undefined,
+    };
+  }
 };
 
 // Check if user has a specific role

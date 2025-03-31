@@ -15,7 +15,7 @@ import { FcGoogle } from "react-icons/fc";
 import { toast, Toaster } from "react-hot-toast";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import { signin, setUserAndToken } from "@/lib/auth";
+import { signin, setUserAndToken, validateCredentials } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { signIn } from "next-auth/react";
 
@@ -38,28 +38,89 @@ const SigninPage = () => {
     setShowPassword((prev) => !prev);
   };
 
+  const validateForm = () => {
+    const validation = validateCredentials(formData.email, formData.password);
+    if (!validation.isValid && validation.errors) {
+      const newErrors: Record<string, string> = {};
+      validation.errors.forEach((error) => {
+        if (error.includes("email")) {
+          newErrors.email = error;
+        } else if (error.includes("password")) {
+          newErrors.password = error;
+        }
+      });
+      setErrors(newErrors);
+      return false;
+    }
+    setErrors({});
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
     setIsLoading(true);
     setAuthError(null);
 
     try {
       const result = await signin(formData.email, formData.password);
       if (result.error) {
-        setAuthError("Invalid email or password");
-        toast.error("Invalid email or password");
+        setAuthError(result.error);
+        toast.error(result.error);
       } else {
         setUserAndToken(result.user, result.token, rememberMe);
         toast.success("Signed in successfully!");
         router.push("/dashboard");
       }
     } catch (error) {
-      setAuthError("Something went wrong. Please try again.");
-      toast.error("Something went wrong. Please try again.");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again.";
+      setAuthError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsGoogleLoading(true);
+      setAuthError(null);
+
+      const result = await signIn("google", {
+        callbackUrl: "/dashboard",
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setAuthError("Failed to sign in with Google");
+        toast.error("Failed to sign in with Google");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to sign in with Google";
+      setAuthError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isLoggedIn && !redirecting) {
+      setRedirecting(true);
+      router.push("/dashboard");
+    }
+  }, [isLoggedIn, router, redirecting]);
 
   return (
     <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50">
@@ -97,14 +158,24 @@ const SigninPage = () => {
                 autoComplete="email"
                 placeholder="Email address"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-                className="pl-10 mb-0"
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  if (errors.email) {
+                    setErrors({ ...errors, email: "" });
+                  }
+                }}
+                className={`pl-10 mb-0 ${errors.email ? "border-red-500" : ""}`}
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? "email-error" : undefined}
               />
               <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
                 <FiMail className="h-5 w-5 text-gray-400" />
               </div>
+              {errors.email && (
+                <p id="email-error" className="mt-1 text-sm text-red-600">
+                  {errors.email}
+                </p>
+              )}
             </div>
             <div className="relative">
               <Input
@@ -114,10 +185,19 @@ const SigninPage = () => {
                 autoComplete="current-password"
                 placeholder="Password"
                 value={formData.password}
-                onChange={(e) =>
-                  setFormData({ ...formData, password: e.target.value })
+                onChange={(e) => {
+                  setFormData({ ...formData, password: e.target.value });
+                  if (errors.password) {
+                    setErrors({ ...errors, password: "" });
+                  }
+                }}
+                className={`pl-10 pr-10 mb-0 ${
+                  errors.password ? "border-red-500" : ""
+                }`}
+                aria-invalid={!!errors.password}
+                aria-describedby={
+                  errors.password ? "password-error" : undefined
                 }
-                className="pl-10 pr-10 mb-0"
               />
               <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
                 <FiLock className="h-5 w-5 text-gray-400" />
@@ -126,6 +206,7 @@ const SigninPage = () => {
                 type="button"
                 onClick={togglePasswordVisibility}
                 className="absolute top-0 right-3 flex items-center h-full text-gray-500 focus:outline-none"
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? (
                   <FiEyeOff className="h-5 w-5 text-gray-400" />
@@ -133,6 +214,37 @@ const SigninPage = () => {
                   <FiEye className="h-5 w-5 text-gray-400" />
                 )}
               </button>
+              {errors.password && (
+                <p id="password-error" className="mt-1 text-sm text-red-600">
+                  {errors.password}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label
+                  htmlFor="remember-me"
+                  className="ml-2 block text-sm text-gray-900"
+                >
+                  Remember me
+                </label>
+              </div>
+              <div className="text-sm">
+                <Link
+                  href="/forgot-password"
+                  className="font-medium text-indigo-600 hover:text-indigo-500"
+                >
+                  Forgot your password?
+                </Link>
+              </div>
             </div>
             <div>
               <Button
@@ -140,6 +252,7 @@ const SigninPage = () => {
                 fullWidth
                 className="group relative flex justify-center py-2.5"
                 isLoading={isLoading}
+                disabled={isLoading}
               >
                 <span className="absolute left-4 inset-y-0 flex items-center">
                   <FiLogIn className="h-5 w-5" />
@@ -152,8 +265,9 @@ const SigninPage = () => {
             <Button
               type="button"
               fullWidth
-              onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+              onClick={handleGoogleSignIn}
               isLoading={isGoogleLoading}
+              disabled={isGoogleLoading}
               className="flex justify-center items-center py-2.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-900"
             >
               <FcGoogle className="w-5 h-5 mr-2" />

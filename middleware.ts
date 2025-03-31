@@ -1,13 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verify } from "jsonwebtoken";
 import { getToken } from "next-auth/jwt";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+// Initialize rate limiter
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(5, "1 m"), // 5 requests per minute
+  analytics: true,
+});
+
+const JWT_SECRET = process.env.JWT_SECRET;
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+
+if (!JWT_SECRET || !NEXTAUTH_SECRET) {
+  throw new Error("Missing required environment variables");
+}
 
 // This function can be marked `async` if using `await` inside
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
+
+  // Rate limiting for auth endpoints
+  if (path === "/api/auth/signin" || path === "/api/auth/signup") {
+    const { success, limit, reset, remaining } = await ratelimit.limit(
+      `auth_${ip}`
+    );
+
+    if (!success) {
+      return new NextResponse(
+        JSON.stringify({
+          error: "Too many requests",
+          limit,
+          reset,
+          remaining,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "X-RateLimit-Limit": limit.toString(),
+            "X-RateLimit-Remaining": remaining.toString(),
+            "X-RateLimit-Reset": reset.toString(),
+          },
+        }
+      );
+    }
+  }
 
   // Define public paths that don't require authentication
   const isPublicPath =
@@ -17,7 +58,7 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/_next") ||
     path.startsWith("/api/auth");
 
-  // Get traditional token from cookies
+  // Get traditional token from cookies with secure flags
   const traditionalToken = request.cookies.get("token")?.value || "";
 
   // Check for next-auth session token
@@ -45,14 +86,9 @@ export async function middleware(request: NextRequest) {
 
   // If we've redirected too many times, stop trying to redirect
   if (redirectCount > 2) {
-    // Clear cookies if there's a redirect loop
     const response = NextResponse.next();
-
-    if (traditionalToken) {
-      response.cookies.delete("token");
-      response.cookies.delete("persistent_login");
-    }
-
+    response.cookies.delete("token");
+    response.cookies.delete("persistent_login");
     return response;
   }
 
@@ -70,15 +106,13 @@ export async function middleware(request: NextRequest) {
     isAuthenticated &&
     (path === "/signin" || path === "/signup")
   ) {
-    // For traditional token, verify it's valid
-    let isValid = !!nextAuthToken; // NextAuth token is already verified
+    let isValid = !!nextAuthToken;
 
     if (traditionalToken && !isValid) {
       try {
-        verify(traditionalToken, JWT_SECRET);
+        verify(traditionalToken, JWT_SECRET as string);
         isValid = true;
       } catch (error) {
-        // Invalid token, clear it
         const response = NextResponse.next();
         response.cookies.delete("token");
         response.cookies.delete("persistent_login");
@@ -94,10 +128,21 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+
+  // Add security headers
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+  );
+
+  return response;
 }
 
 // See "Matching Paths" below to learn more
 export const config = {
-  matcher: ["/", "/dashboard/:path*", "/signin", "/signup"],
+  matcher: ["/", "/dashboard/:path*", "/signin", "/signup", "/api/auth/:path*"],
 };
