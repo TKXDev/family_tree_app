@@ -2,6 +2,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useEffect } from "react";
 import { setUserAndToken, getUser } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
+import { User } from "./auth";
 
 /**
  * Hook that integrates NextAuth sessions with our custom auth system.
@@ -59,3 +60,16 @@ export function useNextAuthIntegration() {
     nextAuthUser: session?.user,
   };
 }
+
+export const getUserFromSession = (session: any): User | null => {
+  if (!session?.user) {
+    return null;
+  }
+
+  return {
+    _id: session.user.id || "",
+    name: session.user.name || "",
+    email: session.user.email || "",
+    role: (session.user as any).role || "user",
+  };
+};

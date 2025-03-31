@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -21,16 +21,17 @@ import { signIn } from "next-auth/react";
 
 const SigninPage = () => {
   const router = useRouter();
-  const { loading: authLoading, isLoggedIn, checkAndSetAuth } = useAuth();
+  const { isLoggedIn } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
   const [rememberMe, setRememberMe] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({});
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -49,10 +50,10 @@ const SigninPage = () => {
           newErrors.password = error;
         }
       });
-      setErrors(newErrors);
+      setValidationErrors(newErrors);
       return false;
     }
-    setErrors({});
+    setValidationErrors({});
     return true;
   };
 
@@ -76,10 +77,10 @@ const SigninPage = () => {
         toast.success("Signed in successfully!");
         router.push("/dashboard");
       }
-    } catch (error) {
+    } catch (err) {
       const errorMessage =
-        error instanceof Error
-          ? error.message
+        err instanceof Error
+          ? err.message
           : "Something went wrong. Please try again.";
       setAuthError(errorMessage);
       toast.error(errorMessage);
@@ -102,11 +103,9 @@ const SigninPage = () => {
         setAuthError("Failed to sign in with Google");
         toast.error("Failed to sign in with Google");
       }
-    } catch (error) {
+    } catch (err) {
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to sign in with Google";
+        err instanceof Error ? err.message : "Failed to sign in with Google";
       setAuthError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -115,12 +114,11 @@ const SigninPage = () => {
   };
 
   // Redirect if already logged in
-  useEffect(() => {
-    if (isLoggedIn && !redirecting) {
-      setRedirecting(true);
+  React.useEffect(() => {
+    if (isLoggedIn) {
       router.push("/dashboard");
     }
-  }, [isLoggedIn, router, redirecting]);
+  }, [isLoggedIn, router]);
 
   return (
     <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50">
@@ -130,7 +128,7 @@ const SigninPage = () => {
           Sign in to your account
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link
             href="/signup"
             className="font-medium text-indigo-600 hover:text-indigo-500"
@@ -160,20 +158,24 @@ const SigninPage = () => {
                 value={formData.email}
                 onChange={(e) => {
                   setFormData({ ...formData, email: e.target.value });
-                  if (errors.email) {
-                    setErrors({ ...errors, email: "" });
+                  if (validationErrors.email) {
+                    setValidationErrors({ ...validationErrors, email: "" });
                   }
                 }}
-                className={`pl-10 mb-0 ${errors.email ? "border-red-500" : ""}`}
-                aria-invalid={!!errors.email}
-                aria-describedby={errors.email ? "email-error" : undefined}
+                className={`pl-10 mb-0 ${
+                  validationErrors.email ? "border-red-500" : ""
+                }`}
+                aria-invalid={!!validationErrors.email}
+                aria-describedby={
+                  validationErrors.email ? "email-error" : undefined
+                }
               />
               <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
                 <FiMail className="h-5 w-5 text-gray-400" />
               </div>
-              {errors.email && (
+              {validationErrors.email && (
                 <p id="email-error" className="mt-1 text-sm text-red-600">
-                  {errors.email}
+                  {validationErrors.email}
                 </p>
               )}
             </div>
@@ -187,16 +189,16 @@ const SigninPage = () => {
                 value={formData.password}
                 onChange={(e) => {
                   setFormData({ ...formData, password: e.target.value });
-                  if (errors.password) {
-                    setErrors({ ...errors, password: "" });
+                  if (validationErrors.password) {
+                    setValidationErrors({ ...validationErrors, password: "" });
                   }
                 }}
                 className={`pl-10 pr-10 mb-0 ${
-                  errors.password ? "border-red-500" : ""
+                  validationErrors.password ? "border-red-500" : ""
                 }`}
-                aria-invalid={!!errors.password}
+                aria-invalid={!!validationErrors.password}
                 aria-describedby={
-                  errors.password ? "password-error" : undefined
+                  validationErrors.password ? "password-error" : undefined
                 }
               />
               <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
@@ -214,9 +216,9 @@ const SigninPage = () => {
                   <FiEye className="h-5 w-5 text-gray-400" />
                 )}
               </button>
-              {errors.password && (
+              {validationErrors.password && (
                 <p id="password-error" className="mt-1 text-sm text-red-600">
-                  {errors.password}
+                  {validationErrors.password}
                 </p>
               )}
             </div>
