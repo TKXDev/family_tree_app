@@ -148,7 +148,12 @@ const SignupPage = () => {
       );
 
       if (result.error) {
-        toast.error(result.error);
+        if (result.details && Array.isArray(result.details)) {
+          // Show specific validation errors
+          toast.error(result.details.join(", "));
+        } else {
+          toast.error(result.error);
+        }
       } else {
         // Store token and user data (default to session)
         setUserAndToken(result.user, result.token, false);
@@ -316,6 +321,11 @@ const SignupPage = () => {
                   <FiLock className="h-5 w-5 text-gray-400" />
                 </div>
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Password must be at least 8 characters with at least one
+                uppercase letter, one lowercase letter, one number, and one
+                special character (@$!%*?&).
+              </p>
             </div>
 
             <div>
