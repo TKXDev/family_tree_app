@@ -2,26 +2,5 @@
   "buildCommand": "next build",
   "devCommand": "next dev",
   "installCommand": "npm install",
-  "framework": "nextjs",
-  "environmentVariables": {
-    "MONGODB_URI": {
-      "type": "secret"
-    },
-    "JWT_SECRET": {
-      "type": "secret"
-    },
-    "NEXTAUTH_URL": {
-      "type": "plain",
-      "value": "https://family-tree-app-tan.vercel.app"
-    },
-    "NEXTAUTH_SECRET": {
-      "type": "secret"
-    },
-    "GOOGLE_CLIENT_ID": {
-      "type": "secret"
-    },
-    "GOOGLE_CLIENT_SECRET": {
-      "type": "secret"
-    }
-  }
+  "framework": "nextjs"
 }
