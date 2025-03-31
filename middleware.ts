@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verify } from "jsonwebtoken";
 import { getToken } from "next-auth/jwt";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import * as jose from "jose";
 
 // Initialize rate limiter
 const ratelimit = new Ratelimit({
@@ -16,6 +16,17 @@ const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
 
 if (!JWT_SECRET || !NEXTAUTH_SECRET) {
   throw new Error("Missing required environment variables");
+}
+
+// Verify token with jose instead of jsonwebtoken
+async function verifyJWT(token: string): Promise<boolean> {
+  try {
+    const secret = new TextEncoder().encode(JWT_SECRET);
+    await jose.jwtVerify(token, secret);
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 // This function can be marked `async` if using `await` inside
@@ -109,10 +120,8 @@ export async function middleware(request: NextRequest) {
     let isValid = !!nextAuthToken;
 
     if (traditionalToken && !isValid) {
-      try {
-        verify(traditionalToken, JWT_SECRET as string);
-        isValid = true;
-      } catch (error) {
+      isValid = await verifyJWT(traditionalToken);
+      if (!isValid) {
         const response = NextResponse.next();
         response.cookies.delete("token");
         response.cookies.delete("persistent_login");
