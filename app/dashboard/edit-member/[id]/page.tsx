@@ -403,7 +403,8 @@ const EditMemberPage = ({ params }: PageProps) => {
               href="/dashboard/family-tree"
               className="inline-flex items-center px-5 py-3 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
             >
-              <FiArrowLeft className="mr-2" /> Back to Family Tree
+              <FiArrowLeft className="mr-2" />{" "}
+              <span className="hidden sm:inline">Back to Family Tree</span>
             </Link>
           </div>
         </div>
@@ -435,7 +436,6 @@ const EditMemberPage = ({ params }: PageProps) => {
               >
                 <FiArrowLeft className="mr-2" />
                 <span className="hidden sm:inline">Family Tree</span>
-                <span className="sm:hidden">Back</span>
               </Link>
               <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
                 Edit {formData.first_name}

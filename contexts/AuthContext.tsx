@@ -7,6 +7,7 @@ import React, {
   useState,
   ReactNode,
   useCallback,
+  useMemo,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -195,14 +196,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [router, isRedirecting, session]);
 
-  const contextValue = {
-    user,
-    loading: loading || status === "loading" || !isInitialized,
-    isLoggedIn,
-    isPersistentLogin,
-    logout: handleLogout,
-    checkAndSetAuth,
-  };
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(
+    () => ({
+      user,
+      loading: loading || status === "loading" || !isInitialized,
+      isLoggedIn,
+      isPersistentLogin,
+      logout: handleLogout,
+      checkAndSetAuth,
+    }),
+    [
+      user,
+      loading,
+      status,
+      isInitialized,
+      isLoggedIn,
+      isPersistentLogin,
+      handleLogout,
+      checkAndSetAuth,
+    ]
+  );
 
   return (
     <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>

@@ -18,6 +18,9 @@ import {
   FiFilter,
   FiDownload,
   FiRefreshCw,
+  FiCalendar,
+  FiHeart,
+  FiUsers,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import ReactFlow, {
@@ -27,8 +30,17 @@ import ReactFlow, {
   useEdgesState,
   MarkerType,
   Panel,
+  ReactFlowProvider,
+  Node,
+  Edge,
+  NodeChange,
+  EdgeChange,
+  OnNodesChange,
+  OnEdgesChange,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import useSWR from "swr";
+import { fetcher } from "../../lib/swr-config";
 
 interface FamilyMember {
   _id: string;
@@ -90,12 +102,94 @@ const ProfileImage = ({
         src={photoUrl}
         alt={`${firstName} ${lastName}`}
         fill
-        sizes={`${size * 4}px`}
+        sizes={`(max-width: 768px) ${size * 4}px, ${size * 8}px`}
+        quality={80}
+        loading="eager"
         onError={() => setError(true)}
+        unoptimized={photoUrl.startsWith("data:")}
       />
     </div>
   );
 };
+
+// Define proper types for the memoized component
+interface MemoizedTreeProps {
+  nodes: Node[];
+  edges: Edge[];
+  onNodesChange: OnNodesChange;
+  onEdgesChange: OnEdgesChange;
+}
+
+// Memoized Tree component to prevent unnecessary re-renders
+const MemoizedTree = React.memo(
+  ({ nodes, edges, onNodesChange, onEdgesChange }: MemoizedTreeProps) => {
+    return (
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        fitView
+        attributionPosition="bottom-right"
+        minZoom={0.1}
+        maxZoom={1.5}
+      >
+        <Background color="#aaa" gap={16} />
+        <Controls />
+        <Panel
+          position="top-left"
+          className="bg-white p-3 rounded-lg shadow-md"
+        >
+          <div className="text-sm text-gray-700">
+            <div className="mb-2 font-bold">Legend:</div>
+            <div className="space-y-2">
+              <div className="flex items-center">
+                <div
+                  className="w-4 h-4 mr-2 rounded"
+                  style={{
+                    backgroundColor: "#dbeafe",
+                    border: "1px solid #3b82f6",
+                  }}
+                ></div>
+                <span>Male</span>
+              </div>
+              <div className="flex items-center">
+                <div
+                  className="w-4 h-4 mr-2 rounded"
+                  style={{
+                    backgroundColor: "#fce7f3",
+                    border: "1px solid #ec4899",
+                  }}
+                ></div>
+                <span>Female</span>
+              </div>
+              <div className="flex items-center">
+                <div
+                  className="w-4 h-4 mr-2 rounded"
+                  style={{
+                    backgroundColor: "#f3e8ff",
+                    border: "1px solid #a855f7",
+                  }}
+                ></div>
+                <span>Other</span>
+              </div>
+              <div className="flex items-center mt-1">
+                <hr className="w-6 border-gray-500 mr-2" />
+                <span>Parent</span>
+              </div>
+              <div className="flex items-center">
+                <hr className="w-6 border-red-500 border-dashed mr-2" />
+                <span>Spouse</span>
+              </div>
+            </div>
+          </div>
+        </Panel>
+      </ReactFlow>
+    );
+  }
+);
+
+MemoizedTree.displayName = "MemoizedTree"; // Required for React.memo with ESLint
 
 const FamilyTreePage = () => {
   const router = useRouter();
@@ -110,6 +204,45 @@ const FamilyTreePage = () => {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isBrowser, setIsBrowser] = useState(false);
+  const [flowRenderError, setFlowRenderError] = useState(false);
+
+  useEffect(() => {
+    setIsBrowser(true);
+  }, []);
+
+  // Use SWR for data fetching with automatic revalidation
+  const {
+    data,
+    error: swrError,
+    mutate,
+    isValidating,
+  } = useSWR(isLoggedIn && isBrowser ? "/api/family-tree" : null, fetcher, {
+    revalidateOnFocus: false, // Don't revalidate on focus to avoid unexpected re-renders
+    dedupingInterval: 10000, // 10 seconds
+    refreshInterval: 0, // Don't refresh automatically
+    onSuccess: (data) => {
+      setTreeData(data.data);
+
+      // Transform data to React Flow format
+      if (data.data) {
+        const { nodes: flowNodes, edges: flowEdges } =
+          transformDataToFlowFormat(data.data);
+        setNodes(flowNodes);
+        setEdges(flowEdges);
+      }
+
+      setIsLoading(false);
+      setIsRefreshing(false);
+    },
+    onError: (err) => {
+      setError("Failed to fetch family tree data");
+      console.error(err);
+      setIsLoading(false);
+      setIsRefreshing(false);
+      toast.error("Could not load family tree data");
+    },
+  });
 
   // Helper function for node styling
   const getNodeStyle = useCallback((gender: string, isHighlighted: boolean) => {
@@ -295,49 +428,9 @@ const FamilyTreePage = () => {
 
   const refreshFamilyTree = async () => {
     setIsRefreshing(true);
-    fetchFamilyTree();
+    // Use SWR's mutate to revalidate data
+    await mutate();
   };
-
-  const fetchFamilyTree = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/family-tree", {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch family tree data");
-      }
-
-      const data = await response.json();
-      setTreeData(data.data);
-
-      // Transform data to React Flow format
-      if (data.data) {
-        const { nodes: flowNodes, edges: flowEdges } =
-          transformDataToFlowFormat(data.data);
-        setNodes(flowNodes);
-        setEdges(flowEdges);
-      }
-
-      setIsLoading(false);
-      setIsRefreshing(false);
-    } catch (err) {
-      setError("Failed to fetch family tree data");
-      console.error(err);
-      setIsLoading(false);
-      setIsRefreshing(false);
-      toast.error("Could not load family tree data");
-    }
-  };
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      fetchFamilyTree();
-    }
-  }, [isLoggedIn, setNodes, setEdges, transformDataToFlowFormat]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this family member?")) {
@@ -354,8 +447,8 @@ const FamilyTreePage = () => {
         }
 
         toast.success("Family member deleted successfully");
-        // Refresh data
-        refreshFamilyTree();
+        // Refresh data using SWR's mutate
+        await mutate();
       } catch (err) {
         console.error(err);
         toast.error("Failed to delete family member");
@@ -388,6 +481,86 @@ const FamilyTreePage = () => {
     const fullName = `${member.first_name} ${member.last_name}`.toLowerCase();
     return fullName.includes(searchQuery.toLowerCase());
   });
+
+  // Debug logs for tracking ReactFlow rendering
+  useEffect(() => {
+    if (isBrowser && nodes.length > 0) {
+      console.log(
+        "Browser ready, nodes prepared for ReactFlow rendering:",
+        nodes.length,
+        "nodes,",
+        edges.length,
+        "edges"
+      );
+    }
+  }, [isBrowser, nodes.length, edges.length]);
+
+  // Function to safely render the ReactFlow component
+  const renderReactFlow = useCallback(() => {
+    if (!isBrowser || nodes.length === 0 || flowRenderError) {
+      return (
+        <div className="h-full flex items-center justify-center">
+          <div className="text-center p-6">
+            <div className="mx-auto h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center mb-4">
+              <FiInfo className="h-6 w-6 text-indigo-600" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">
+              {!isBrowser || isLoading
+                ? "Loading visualization..."
+                : flowRenderError
+                ? "Error loading visualization"
+                : "No family tree to display"}
+            </h3>
+            <p className="text-gray-500 max-w-md mb-4">
+              {!isBrowser || isLoading
+                ? "Please wait while we prepare your family tree..."
+                : flowRenderError
+                ? "There was a problem rendering your family tree. Please try refreshing the page."
+                : treeData?.members?.length === 0
+                ? "Add family members to visualize your family tree"
+                : "No data available for visualization"}
+            </p>
+            {treeData?.members?.length === 0 &&
+              isBrowser &&
+              !isLoading &&
+              !flowRenderError && (
+                <Link href="/dashboard/add-member">
+                  <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                    <FiPlus className="mr-2" /> Add Your First Member
+                  </button>
+                </Link>
+              )}
+          </div>
+        </div>
+      );
+    }
+
+    try {
+      return (
+        <ReactFlowProvider>
+          <MemoizedTree
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+          />
+        </ReactFlowProvider>
+      );
+    } catch (error) {
+      console.error("Error rendering ReactFlow:", error);
+      setFlowRenderError(true);
+      return null;
+    }
+  }, [
+    isBrowser,
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    flowRenderError,
+    isLoading,
+    treeData,
+  ]);
 
   if (loading || isLoading) {
     return (
@@ -422,7 +595,6 @@ const FamilyTreePage = () => {
                 >
                   <FiArrowLeft className="mr-2" />
                   <span className="hidden sm:inline">Dashboard</span>
-                  <span className="sm:hidden">Back</span>
                 </Link>
                 <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
                   Family Tree
@@ -523,94 +695,7 @@ const FamilyTreePage = () => {
                 </div>
               </div>
 
-              <div className="h-[600px] w-full">
-                {nodes.length > 0 ? (
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    fitView
-                    attributionPosition="bottom-right"
-                    minZoom={0.1}
-                    maxZoom={1.5}
-                  >
-                    <Background color="#aaa" gap={16} />
-                    <Controls />
-                    <Panel
-                      position="top-left"
-                      className="bg-white p-3 rounded-lg shadow-md"
-                    >
-                      <div className="text-sm text-gray-700">
-                        <div className="mb-2 font-bold">Legend:</div>
-                        <div className="space-y-2">
-                          <div className="flex items-center">
-                            <div
-                              className="w-4 h-4 mr-2 rounded"
-                              style={{
-                                backgroundColor: "#dbeafe",
-                                border: "1px solid #3b82f6",
-                              }}
-                            ></div>
-                            <span>Male</span>
-                          </div>
-                          <div className="flex items-center">
-                            <div
-                              className="w-4 h-4 mr-2 rounded"
-                              style={{
-                                backgroundColor: "#fce7f3",
-                                border: "1px solid #ec4899",
-                              }}
-                            ></div>
-                            <span>Female</span>
-                          </div>
-                          <div className="flex items-center">
-                            <div
-                              className="w-4 h-4 mr-2 rounded"
-                              style={{
-                                backgroundColor: "#f3e8ff",
-                                border: "1px solid #a855f7",
-                              }}
-                            ></div>
-                            <span>Other</span>
-                          </div>
-                          <div className="flex items-center mt-1">
-                            <hr className="w-6 border-gray-500 mr-2" />
-                            <span>Parent</span>
-                          </div>
-                          <div className="flex items-center">
-                            <hr className="w-6 border-red-500 border-dashed mr-2" />
-                            <span>Spouse</span>
-                          </div>
-                        </div>
-                      </div>
-                    </Panel>
-                  </ReactFlow>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center p-6">
-                      <div className="mx-auto h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center mb-4">
-                        <FiInfo className="h-6 w-6 text-indigo-600" />
-                      </div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">
-                        No family tree to display
-                      </h3>
-                      <p className="text-gray-500 max-w-md mb-4">
-                        {treeData?.members?.length === 0
-                          ? "Add family members to visualize your family tree"
-                          : "Loading tree visualization..."}
-                      </p>
-                      {treeData?.members?.length === 0 && (
-                        <Link href="/dashboard/add-member">
-                          <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
-                            <FiPlus className="mr-2" /> Add Your First Member
-                          </button>
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <div className="h-[600px] w-full">{renderReactFlow()}</div>
             </div>
 
             {/* Members List */}
@@ -645,155 +730,260 @@ const FamilyTreePage = () => {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Name
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Birth Date
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Generation
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Spouse
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Children
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredMembers?.length ? (
-                      filteredMembers.map((member) => (
-                        <tr
-                          key={member._id}
-                          className="hover:bg-gray-50 transition-colors"
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                         >
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="flex-shrink-0 h-10 w-10">
-                                <ProfileImage
-                                  photoUrl={member.photo_url}
-                                  firstName={member.first_name}
-                                  lastName={member.last_name}
-                                  size={10}
-                                />
-                              </div>
-                              <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {member.first_name} {member.last_name}
+                          Name
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Birth Date
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Generation
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Spouse
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Children
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredMembers?.length ? (
+                        filteredMembers.map((member) => (
+                          <tr
+                            key={member._id}
+                            className="hover:bg-gray-50 transition-colors"
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-10 w-10">
+                                  <ProfileImage
+                                    photoUrl={member.photo_url}
+                                    firstName={member.first_name}
+                                    lastName={member.last_name}
+                                    size={10}
+                                  />
                                 </div>
-                                <div className="text-sm text-gray-500 capitalize">
-                                  {member.gender}
+                                <div className="ml-4">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {member.first_name} {member.last_name}
+                                  </div>
+                                  <div className="text-sm text-gray-500 capitalize">
+                                    {member.gender}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {new Date(member.birth_date).toLocaleDateString()}
-                            </div>
-                            {member.death_date && (
-                              <div className="text-sm text-gray-500">
-                                †{" "}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
                                 {new Date(
-                                  member.death_date
+                                  member.birth_date
                                 ).toLocaleDateString()}
+                              </div>
+                              {member.death_date && (
+                                <div className="text-sm text-gray-500">
+                                  †{" "}
+                                  {new Date(
+                                    member.death_date
+                                  ).toLocaleDateString()}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                Gen {member.generation}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {getSpouseName(member.spouse_id)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {getChildrenNames(member.children_ids)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <div className="flex space-x-3">
+                                <Link
+                                  href={`/dashboard/edit-member/${member._id}`}
+                                  className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                                  title="Edit member"
+                                >
+                                  <FiEdit className="h-5 w-5" />
+                                </Link>
+                                <button
+                                  onClick={() => handleDelete(member._id)}
+                                  className="text-red-500 hover:text-red-700 transition-colors"
+                                  title="Delete member"
+                                >
+                                  <FiTrash2 className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-10 text-center">
+                            {searchQuery ? (
+                              <div className="text-gray-500">
+                                <p className="font-medium">No matches found</p>
+                                <p className="text-sm">
+                                  Try a different search term
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="text-gray-500">
+                                <p className="font-medium mb-2">
+                                  No family members found
+                                </p>
+                                <Link
+                                  href="/dashboard/add-member"
+                                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                                >
+                                  <FiPlus className="mr-2" /> Add Your First
+                                  Member
+                                </Link>
                               </div>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                              Gen {member.generation}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {getSpouseName(member.spouse_id)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {getChildrenNames(member.children_ids)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex space-x-3">
-                              <Link
-                                href={`/dashboard/edit-member/${member._id}`}
-                                className="text-indigo-600 hover:text-indigo-900 transition-colors"
-                                title="Edit member"
-                              >
-                                <FiEdit className="h-5 w-5" />
-                              </Link>
-                              <button
-                                onClick={() => handleDelete(member._id)}
-                                className="text-red-500 hover:text-red-700 transition-colors"
-                                title="Delete member"
-                              >
-                                <FiTrash2 className="h-5 w-5" />
-                              </button>
-                            </div>
-                          </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-10 text-center">
-                          {searchQuery ? (
-                            <div className="text-gray-500">
-                              <p className="font-medium">No matches found</p>
-                              <p className="text-sm">
-                                Try a different search term
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="text-gray-500">
-                              <p className="font-medium mb-2">
-                                No family members found
-                              </p>
-                              <Link
-                                href="/dashboard/add-member"
-                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                              >
-                                <FiPlus className="mr-2" /> Add Your First
-                                Member
-                              </Link>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
 
-              {/* Mobile optimized view for smaller screens */}
-              <div className="sm:hidden">
-                <div className="px-4 py-3 bg-gray-50 text-right">
-                  <p className="text-xs text-gray-500">
-                    Swipe left/right to see all columns
-                  </p>
+                {/* Mobile Card List View */}
+                <div className="md:hidden">
+                  {filteredMembers?.length ? (
+                    <div className="space-y-4">
+                      {filteredMembers.map((member) => (
+                        <div
+                          key={member._id}
+                          className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                        >
+                          <div className="p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center space-x-3">
+                                <div className="flex-shrink-0">
+                                  <ProfileImage
+                                    photoUrl={member.photo_url}
+                                    firstName={member.first_name}
+                                    lastName={member.last_name}
+                                    size={12}
+                                  />
+                                </div>
+                                <div>
+                                  <h3 className="text-base font-medium text-gray-900">
+                                    {member.first_name} {member.last_name}
+                                  </h3>
+                                  <div className="flex items-center space-x-2 mt-1">
+                                    <span className="text-sm text-gray-500 capitalize">
+                                      {member.gender}
+                                    </span>
+                                    <span className="text-gray-300">•</span>
+                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                      Gen {member.generation}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex space-x-2">
+                                <Link
+                                  href={`/dashboard/edit-member/${member._id}`}
+                                  className="p-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-full transition-colors"
+                                  title="Edit member"
+                                >
+                                  <FiEdit className="h-5 w-5" />
+                                </Link>
+                                <button
+                                  onClick={() => handleDelete(member._id)}
+                                  className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
+                                  title="Delete member"
+                                >
+                                  <FiTrash2 className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 space-y-2">
+                              <div className="flex items-center text-sm text-gray-600">
+                                <FiCalendar className="mr-2 h-4 w-4 text-gray-400" />
+                                <span>
+                                  {new Date(
+                                    member.birth_date
+                                  ).toLocaleDateString()}
+                                  {member.death_date &&
+                                    ` - ${new Date(
+                                      member.death_date
+                                    ).toLocaleDateString()}`}
+                                </span>
+                              </div>
+                              {member.spouse_id && (
+                                <div className="flex items-center text-sm text-gray-600">
+                                  <FiHeart className="mr-2 h-4 w-4 text-pink-400" />
+                                  <span>{getSpouseName(member.spouse_id)}</span>
+                                </div>
+                              )}
+                              {member.children_ids.length > 0 && (
+                                <div className="flex items-center text-sm text-gray-600">
+                                  <FiUsers className="mr-2 h-4 w-4 text-indigo-400" />
+                                  <span>
+                                    {getChildrenNames(member.children_ids)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10">
+                      {searchQuery ? (
+                        <div className="text-gray-500">
+                          <p className="font-medium">No matches found</p>
+                          <p className="text-sm">Try a different search term</p>
+                        </div>
+                      ) : (
+                        <div className="text-gray-500">
+                          <p className="font-medium mb-2">
+                            No family members found
+                          </p>
+                          <Link
+                            href="/dashboard/add-member"
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                          >
+                            <FiPlus className="mr-2" /> Add Your First Member
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

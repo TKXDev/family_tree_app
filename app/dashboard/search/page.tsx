@@ -18,6 +18,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
+import { useDebounce } from "../../lib/hooks";
 
 interface FamilyMember {
   _id: string;
@@ -85,6 +86,32 @@ const SearchPage = () => {
   const [generation, setGeneration] = useState("");
   const [gender, setGender] = useState("");
 
+  // Debounce search inputs to prevent excessive API calls
+  const debouncedFirstName = useDebounce(firstName, 500);
+  const debouncedLastName = useDebounce(lastName, 500);
+  const debouncedGeneration = useDebounce(generation, 500);
+  const debouncedGender = useDebounce(gender, 500);
+
+  // Auto-search when debounced values change
+  useEffect(() => {
+    // Only run if at least one field has a value and user has interacted with the form
+    if (
+      (debouncedFirstName ||
+        debouncedLastName ||
+        debouncedGeneration ||
+        debouncedGender) &&
+      hasSearched
+    ) {
+      handleSearch();
+    }
+  }, [
+    debouncedFirstName,
+    debouncedLastName,
+    debouncedGeneration,
+    debouncedGender,
+    hasSearched,
+  ]);
+
   useEffect(() => {
     // Redirect to login if not authenticated
     if (!loading && !isLoggedIn) {
@@ -92,14 +119,17 @@ const SearchPage = () => {
     }
   }, [loading, isLoggedIn, router]);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+      // Set hasSearched to true when the form is manually submitted
+      setHasSearched(true);
+    }
 
     try {
       setIsLoading(true);
-      setHasSearched(true);
 
-      // Build query parameters
+      // Build query parameters using the debounced values for auto-search
       const params = new URLSearchParams();
       if (firstName) params.append("firstName", firstName);
       if (lastName) params.append("lastName", lastName);
@@ -120,18 +150,24 @@ const SearchPage = () => {
       setMembers(data.data);
       setIsLoading(false);
 
-      if (data.count === 0) {
-        toast("No family members match your search criteria", {
-          icon: "🔍",
-        });
-      } else {
-        toast.success(`Found ${data.count} family member(s)`);
+      if (e) {
+        // Only show toast notifications on manual searches, not auto-searches
+        if (data.count === 0) {
+          toast("No family members match your search criteria", {
+            icon: "🔍",
+          });
+        } else {
+          toast.success(`Found ${data.count} family member(s)`);
+        }
       }
     } catch (err) {
       setError("Failed to search family members");
       console.error(err);
       setIsLoading(false);
-      toast.error("Search failed, please try again");
+      if (e) {
+        // Only show error toasts on manual searches
+        toast.error("Search failed, please try again");
+      }
     }
   };
 
@@ -180,7 +216,6 @@ const SearchPage = () => {
               >
                 <FiArrowLeft className="mr-2" />
                 <span className="hidden sm:inline">Dashboard</span>
-                <span className="sm:hidden">Back</span>
               </Link>
               <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
                 Search Family

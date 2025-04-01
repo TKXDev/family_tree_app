@@ -308,7 +308,7 @@ const AddMemberPage = () => {
               href="/dashboard/family-tree"
               className="flex items-center text-indigo-600 hover:text-indigo-800 font-medium"
             >
-              <FiArrowLeft className="mr-2" /> Back
+              <FiArrowLeft className="mr-2" />
             </Link>
             <h1 className="text-lg md:text-xl font-bold text-gray-800">
               Add Family Member

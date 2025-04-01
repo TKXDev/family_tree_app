@@ -149,7 +149,8 @@ const SigninPage = () => {
             href="/"
             className="text-gray-600 hover:text-indigo-600 flex items-center text-sm"
           >
-            <FiArrowLeft className="mr-1" /> Back to Home
+            <FiArrowLeft className="mr-1" />{" "}
+            <span className="hidden sm:inline">Back to Home</span>
           </Link>
         </div>
       </header>
