@@ -11,6 +11,8 @@ import {
   FiAlertTriangle,
   FiEye,
   FiEyeOff,
+  FiArrowLeft,
+  FiCheck,
 } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
 import { toast, Toaster } from "react-hot-toast";
@@ -204,7 +206,7 @@ const SignupPage = () => {
   // Show loading state while checking authentication
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-600"></div>
       </div>
     );
@@ -215,190 +217,339 @@ const SignupPage = () => {
     setRedirecting(true);
     router.push("/dashboard");
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50">
-      <Toaster position="top-center" />
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          style: {
+            borderRadius: "10px",
+            background: "#333",
+            color: "#fff",
+          },
+        }}
+      />
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Create a new account
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Already have an account?{" "}
-          <Link
-            href="/signin"
-            className="font-medium text-indigo-600 hover:text-indigo-500"
-          >
-            Sign in
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+          <Link href="/" className="flex items-center">
+            <div className="w-8 h-8 rounded-md overflow-hidden bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold mr-2">
+              FT
+            </div>
+            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 hidden sm:block">
+              Family Tree
+            </span>
           </Link>
-        </p>
-      </div>
+          <Link
+            href="/"
+            className="text-gray-600 hover:text-indigo-600 flex items-center text-sm"
+          >
+            <FiArrowLeft className="mr-1" /> Back to Home
+          </Link>
+        </div>
+      </header>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {authError && (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-3">
-              <div className="flex items-center">
-                <FiAlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
-                <p className="ml-3 text-sm text-red-700">{authError}</p>
-              </div>
-            </div>
-          )}
+      <div className="flex flex-col justify-center py-8 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold text-gray-900">
+              Create your account
+            </h2>
+            <p className="mt-2 text-gray-600">
+              Join our family tree community and preserve your family history
+            </p>
+          </div>
+        </div>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <div className="relative">
-                <Input
-                  id="name"
-                  name="name"
-                  type="text"
-                  autoComplete="name"
-                  placeholder="Full name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  error={errors.name}
-                  className="pl-10 mb-0"
-                  disabled={redirecting}
-                />
-                <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
-                  <FiUser className="h-5 w-5 text-gray-400" />
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
+          <div className="bg-white py-8 px-4 sm:px-10 shadow-lg rounded-2xl">
+            {authError && (
+              <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <FiAlertTriangle className="h-5 w-5 text-red-500" />
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-red-700">{authError}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            <div>
-              <div className="relative">
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="Email address"
-                  value={formData.email}
-                  onChange={handleChange}
-                  error={errors.email}
-                  className="pl-10 mb-0"
-                  disabled={redirecting}
-                />
-                <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
-                  <FiMail className="h-5 w-5 text-gray-400" />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div className="relative">
-                <Input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="Password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  error={errors.password}
-                  className="pl-10 mb-0"
-                  disabled={redirecting}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-0 top-0 mt-3 mr-3 text-gray-500 focus:outline-none"
-                >
-                  {showPassword ? (
-                    <FiEyeOff className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <FiEye className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-                <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
-                  <FiLock className="h-5 w-5 text-gray-400" />
-                </div>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Password must be at least 8 characters with at least one
-                uppercase letter, one lowercase letter, one number, and one
-                special character (@$!%*?&).
-              </p>
-            </div>
-
-            <div>
-              <div className="relative">
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="Confirm password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  error={errors.confirmPassword}
-                  className="pl-10 mb-0"
-                  disabled={redirecting}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-0 top-0 mt-3 mr-3 text-gray-500 focus:outline-none"
-                >
-                  {showConfirmPassword ? (
-                    <FiEyeOff className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <FiEye className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-                <div className="absolute top-0 left-0 pl-3 flex items-center h-10 pointer-events-none">
-                  <FiLock className="h-5 w-5 text-gray-400" />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <Button
-                type="submit"
-                fullWidth
-                isLoading={isLoading || redirecting}
-                className="group relative flex justify-center py-2.5"
-                disabled={isLoading || redirecting || isGoogleLoading}
-              >
-                <span className="absolute left-4 inset-y-0 flex items-center">
-                  <FiUserPlus className="h-5 w-5" />
-                </span>
-                Create Account
-              </Button>
-            </div>
-          </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  Or continue with
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <Button
+            {/* Social Signup */}
+            <div className="mb-6">
+              <button
                 type="button"
-                fullWidth
                 onClick={handleGoogleSignUp}
-                isLoading={isGoogleLoading}
-                disabled={isLoading || redirecting || isGoogleLoading}
-                className="flex justify-center items-center py-2.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-900"
+                disabled={isGoogleLoading}
+                className="w-full flex justify-center items-center px-4 py-3 border border-gray-300 rounded-lg shadow-sm bg-white hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
-                <FcGoogle className="w-5 h-5 mr-2" />
-                Sign up with Google
-              </Button>
+                <FcGoogle className="h-5 w-5 mr-2" />
+                <span className="text-gray-700 font-medium">
+                  {isGoogleLoading ? "Connecting..." : "Sign up with Google"}
+                </span>
+              </button>
+            </div>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center">
+                <span className="px-3 bg-white text-sm text-gray-500">
+                  Or sign up with email
+                </span>
+              </div>
+            </div>
+
+            <form className="space-y-5" onSubmit={handleSubmit}>
+              {/* Full Name */}
+              <div className="space-y-1">
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Full Name
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiUser className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Your full name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    className={`block w-full pl-10 pr-3 py-3 border ${
+                      errors.name ? "border-red-300" : "border-gray-300"
+                    } rounded-lg bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm`}
+                    aria-invalid={!!errors.name}
+                  />
+                </div>
+                {errors.name && (
+                  <p className="text-sm text-red-600 mt-1">{errors.name}</p>
+                )}
+              </div>
+
+              {/* Email */}
+              <div className="space-y-1">
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiMail className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className={`block w-full pl-10 pr-3 py-3 border ${
+                      errors.email ? "border-red-300" : "border-gray-300"
+                    } rounded-lg bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm`}
+                    aria-invalid={!!errors.email}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="text-sm text-red-600 mt-1">{errors.email}</p>
+                )}
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiLock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    placeholder="Create a secure password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    className={`block w-full pl-10 pr-10 py-3 border ${
+                      errors.password ? "border-red-300" : "border-gray-300"
+                    } rounded-lg bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm`}
+                    aria-invalid={!!errors.password}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <FiEyeOff className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                    ) : (
+                      <FiEye className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="text-sm text-red-600 mt-1">{errors.password}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Password must be at least 8 characters long
+                </p>
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1">
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiLock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    placeholder="Confirm your password"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    className={`block w-full pl-10 pr-10 py-3 border ${
+                      errors.confirmPassword
+                        ? "border-red-300"
+                        : "border-gray-300"
+                    } rounded-lg bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm`}
+                    aria-invalid={!!errors.confirmPassword}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    aria-label={
+                      showConfirmPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showConfirmPassword ? (
+                      <FiEyeOff className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                    ) : (
+                      <FiEye className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                    )}
+                  </button>
+                </div>
+                {errors.confirmPassword && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.confirmPassword}
+                  </p>
+                )}
+              </div>
+
+              {/* Terms and Conditions */}
+              <div className="flex items-start">
+                <div className="flex items-center h-5">
+                  <input
+                    id="terms"
+                    name="terms"
+                    type="checkbox"
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    required
+                  />
+                </div>
+                <div className="ml-3 text-sm">
+                  <label htmlFor="terms" className="text-gray-700">
+                    I agree to the{" "}
+                    <Link
+                      href="#"
+                      className="text-indigo-600 hover:text-indigo-500"
+                    >
+                      Terms of Service
+                    </Link>{" "}
+                    and{" "}
+                    <Link
+                      href="#"
+                      className="text-indigo-600 hover:text-indigo-500"
+                    >
+                      Privacy Policy
+                    </Link>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={isLoading || redirecting}
+                  className="w-full flex justify-center items-center px-4 py-3 border border-transparent rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                >
+                  {isLoading ? (
+                    <>
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Creating Account...
+                    </>
+                  ) : (
+                    <>
+                      <FiUserPlus className="mr-2" />
+                      Create Account
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                Already have an account?{" "}
+                <Link
+                  href="/signin"
+                  className="font-medium text-indigo-600 hover:text-indigo-500"
+                >
+                  Sign in
+                </Link>
+              </p>
             </div>
           </div>
         </div>
