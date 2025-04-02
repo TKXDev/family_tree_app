@@ -1,16 +1,22 @@
-import axios, { AxiosRequestConfig, AxiosResponse, AxiosError } from "axios";
+import axios, {
+  InternalAxiosRequestConfig,
+  AxiosResponse,
+  AxiosError,
+} from "axios";
+import Cookies from "js-cookie";
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api",
+  baseURL: "/api",
   headers: {
     "Content-Type": "application/json",
   },
+  withCredentials: true, // This is important for sending cookies
 });
 
 // Add a request interceptor to add auth token
 api.interceptors.request.use(
-  (config: AxiosRequestConfig) => {
-    const token = localStorage.getItem("token");
+  (config: InternalAxiosRequestConfig) => {
+    const token = Cookies.get("token");
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -27,7 +33,7 @@ api.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       // Handle unauthorized access
-      localStorage.removeItem("token");
+      Cookies.remove("token");
       window.location.href = "/signin";
     }
     return Promise.reject(error);

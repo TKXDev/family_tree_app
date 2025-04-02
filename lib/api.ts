@@ -84,17 +84,17 @@ export const memberApi = {
 // Family Tree APIs
 export const treeApi = {
   getTree: async () => {
-    const response = await api.get("/tree");
+    const response = await api.get("/family-tree");
     return response.data;
   },
 
   updateTree: async (tree: any) => {
-    const response = await api.put("/tree", tree);
+    const response = await api.put("/family-tree", tree);
     return response.data;
   },
 
-  exportTree: async (format: "json" | "pdf" | "png") => {
-    const response = await api.get(`/tree/export?format=${format}`, {
+  exportTree: async (format: "png" | "pdf" | "json") => {
+    const response = await api.get(`/family-tree/export?format=${format}`, {
       responseType: "blob",
     });
     return response.data;

@@ -41,6 +41,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import useSWR from "swr";
 import { fetcher } from "../../lib/swr-config";
+import { useTree } from "@/lib/hooks/useTree";
 
 interface FamilyMember {
   _id: string;
@@ -206,6 +207,14 @@ const FamilyTreePage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isBrowser, setIsBrowser] = useState(false);
   const [flowRenderError, setFlowRenderError] = useState(false);
+  const {
+    tree,
+    loading: treeLoading,
+    error: treeError,
+    fetchTree,
+    exportTree,
+  } = useTree();
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     setIsBrowser(true);
@@ -562,6 +571,44 @@ const FamilyTreePage = () => {
     treeData,
   ]);
 
+  const handleExport = useCallback(
+    async (format: "png" | "pdf" | "json") => {
+      let loadingToast: string | undefined;
+      try {
+        setIsExporting(true);
+        loadingToast = toast.loading(
+          `Exporting family tree as ${format.toUpperCase()}...`
+        );
+
+        const blob = await exportTree(format);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `family-tree.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        if (loadingToast) {
+          toast.dismiss(loadingToast);
+        }
+        toast.success(
+          `Family tree exported successfully as ${format.toUpperCase()}!`
+        );
+      } catch (error) {
+        console.error("Export failed:", error);
+        if (loadingToast) {
+          toast.dismiss(loadingToast);
+        }
+        toast.error("Failed to export family tree. Please try again.");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [exportTree]
+  );
+
   if (loading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
@@ -686,12 +733,47 @@ const FamilyTreePage = () => {
                       className={isRefreshing ? "animate-spin" : ""}
                     />
                   </button>
-                  <button
-                    className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-gray-50 rounded-full transition-colors"
-                    title="Download as image (not implemented)"
-                  >
-                    <FiDownload />
-                  </button>
+                  <div className="relative group">
+                    <button
+                      disabled={isExporting}
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FiDownload className="mr-2 h-4 w-4" />
+                      {isExporting ? "Exporting..." : "Export"}
+                    </button>
+                    <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                      <div
+                        className="py-1"
+                        role="menu"
+                        aria-orientation="vertical"
+                      >
+                        <button
+                          onClick={() => handleExport("png")}
+                          disabled={isExporting}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          role="menuitem"
+                        >
+                          Export as PNG
+                        </button>
+                        <button
+                          onClick={() => handleExport("pdf")}
+                          disabled={isExporting}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          role="menuitem"
+                        >
+                          Export as PDF
+                        </button>
+                        <button
+                          onClick={() => handleExport("json")}
+                          disabled={isExporting}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          role="menuitem"
+                        >
+                          Export as JSON
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
