@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { usePageTitle } from "@/lib/hooks/usePageTitle";
 import {
   FiArrowLeft,
   FiSave,
@@ -44,6 +45,7 @@ interface MemberFormData {
 }
 
 const AddMemberPage = () => {
+  usePageTitle("Add New Member");
   const router = useRouter();
   const { user, loading, isLoggedIn } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);

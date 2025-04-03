@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
@@ -21,6 +21,7 @@ import {
   FiCalendar,
   FiHeart,
   FiUsers,
+  FiX,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import ReactFlow, {
@@ -42,6 +43,7 @@ import "reactflow/dist/style.css";
 import useSWR from "swr";
 import { fetcher } from "../../lib/swr-config";
 import { useTree } from "@/lib/hooks/useTree";
+import { useDynamicPageTitle } from "@/lib/hooks/usePageTitle";
 
 interface FamilyMember {
   _id: string;
@@ -69,49 +71,59 @@ interface TreeData {
   relationships: Relationship[];
 }
 
-// ProfileImage component for consistent image handling
-const ProfileImage = ({
-  photoUrl,
-  firstName,
-  lastName,
-  size = 12,
-}: {
-  photoUrl?: string;
-  firstName: string;
-  lastName: string;
-  size?: number;
-}) => {
-  const [error, setError] = useState(false);
+// Define nodeTypes and edgeTypes outside of components to prevent recreation on each render
+const nodeTypes = {};
+const edgeTypes = {};
 
-  if (!photoUrl || error) {
+/**
+ * Memoized component for displaying profile images to prevent re-renders
+ */
+const ProfileImage = React.memo(
+  ({
+    photoUrl,
+    firstName,
+    lastName,
+    size = 12,
+  }: {
+    photoUrl?: string;
+    firstName: string;
+    lastName: string;
+    size?: number;
+  }) => {
+    const [error, setError] = useState(false);
+
+    if (!photoUrl || error) {
+      return (
+        <div
+          className={`h-${size} w-${size} rounded-full bg-gradient-to-r from-indigo-100 to-purple-100 flex items-center justify-center`}
+        >
+          <span className="text-indigo-800 font-medium">
+            {firstName.charAt(0)}
+            {lastName.charAt(0)}
+          </span>
+        </div>
+      );
+    }
+
     return (
-      <div
-        className={`h-${size} w-${size} rounded-full bg-gradient-to-r from-indigo-100 to-purple-100 flex items-center justify-center`}
-      >
-        <span className="text-indigo-800 font-medium">
-          {firstName.charAt(0)}
-          {lastName.charAt(0)}
-        </span>
+      <div className={`relative h-${size} w-${size}`}>
+        <Image
+          className="rounded-full object-cover"
+          src={photoUrl}
+          alt={`${firstName} ${lastName}`}
+          fill
+          sizes={`(max-width: 768px) ${size * 4}px, ${size * 8}px`}
+          quality={80}
+          loading="eager"
+          onError={() => setError(true)}
+          unoptimized={photoUrl.startsWith("data:")}
+        />
       </div>
     );
   }
+);
 
-  return (
-    <div className={`relative h-${size} w-${size}`}>
-      <Image
-        className="rounded-full object-cover"
-        src={photoUrl}
-        alt={`${firstName} ${lastName}`}
-        fill
-        sizes={`(max-width: 768px) ${size * 4}px, ${size * 8}px`}
-        quality={80}
-        loading="eager"
-        onError={() => setError(true)}
-        unoptimized={photoUrl.startsWith("data:")}
-      />
-    </div>
-  );
-};
+ProfileImage.displayName = "ProfileImage";
 
 // Define proper types for the memoized component
 interface MemoizedTreeProps {
@@ -130,6 +142,8 @@ const MemoizedTree = React.memo(
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         attributionPosition="bottom-right"
         minZoom={0.1}
@@ -192,6 +206,84 @@ const MemoizedTree = React.memo(
 
 MemoizedTree.displayName = "MemoizedTree"; // Required for React.memo with ESLint
 
+// Memoized search input component to prevent re-renders
+const SearchInput = React.memo(
+  ({
+    value,
+    onChange,
+    onClear,
+  }: {
+    value: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onClear: () => void;
+  }) => {
+    return (
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <FiSearch className="h-5 w-5 text-gray-400" />
+        </div>
+        <input
+          type="text"
+          value={value}
+          onChange={onChange}
+          placeholder="Search family members..."
+          className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="absolute inset-y-0 right-0 px-3 flex items-center"
+          >
+            <FiX className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+          </button>
+        )}
+      </div>
+    );
+  }
+);
+
+SearchInput.displayName = "SearchInput";
+
+// Memoized export button component
+const ExportButton = React.memo(
+  ({
+    format,
+    onClick,
+    isExporting,
+  }: {
+    format: "png" | "pdf" | "json";
+    onClick: () => void;
+    isExporting: boolean;
+  }) => {
+    const formatLabels = {
+      png: "PNG Image",
+      pdf: "PDF Document",
+      json: "JSON Data",
+    };
+
+    return (
+      <button
+        onClick={onClick}
+        disabled={isExporting}
+        className="flex items-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isExporting ? (
+          <>
+            <span className="animate-spin mr-2">⭘</span> Exporting...
+          </>
+        ) : (
+          <>
+            <FiDownload className="mr-2" /> {formatLabels[format]}
+          </>
+        )}
+      </button>
+    );
+  }
+);
+
+ExportButton.displayName = "ExportButton";
+
 const FamilyTreePage = () => {
   const router = useRouter();
   const { user, loading, isLoggedIn } = useAuth();
@@ -219,6 +311,26 @@ const FamilyTreePage = () => {
   useEffect(() => {
     setIsBrowser(true);
   }, []);
+
+  // Filter members based on search query - memoized to avoid recalculation
+  const filteredMembers = useMemo(() => {
+    if (!searchQuery || !treeData?.members) return treeData?.members;
+
+    return treeData.members.filter((member) => {
+      const fullName = `${member.first_name} ${member.last_name}`.toLowerCase();
+      return fullName.includes(searchQuery.toLowerCase());
+    });
+  }, [searchQuery, treeData?.members]);
+
+  // Use the custom hook for dynamic page title
+  useDynamicPageTitle({
+    title: "Family Tree",
+    loading: isLoading,
+    error,
+    count: treeData?.members?.length,
+    searchQuery: searchQuery || undefined,
+    searchResults: searchQuery ? filteredMembers : undefined,
+  });
 
   // Use SWR for data fetching with automatic revalidation
   const {
@@ -253,7 +365,7 @@ const FamilyTreePage = () => {
     },
   });
 
-  // Helper function for node styling
+  // Helper function for node styling - memoized to prevent recreation
   const getNodeStyle = useCallback((gender: string, isHighlighted: boolean) => {
     const baseStyle = {
       padding: 10,
@@ -305,7 +417,7 @@ const FamilyTreePage = () => {
     }
   }, [loading, isLoggedIn, router]);
 
-  // Transform tree data to React Flow format
+  // Transform tree data to React Flow format - memoized for performance
   const transformDataToFlowFormat = useCallback(
     (data: TreeData) => {
       if (!data || !data.members) return { nodes: [], edges: [] };
@@ -432,14 +544,90 @@ const FamilyTreePage = () => {
 
       return { nodes: flowNodes, edges: flowEdges };
     },
-    [getNodeStyle, highlightedMember]
+    [highlightedMember, getNodeStyle]
   );
 
-  const refreshFamilyTree = async () => {
+  // Memoize the transformed data to prevent unnecessary recalculations
+  const flowData = useMemo(() => {
+    if (!treeData) return { nodes: [], edges: [] };
+    return transformDataToFlowFormat(treeData);
+  }, [treeData, transformDataToFlowFormat]);
+
+  // Update nodes and edges when flowData changes
+  useEffect(() => {
+    if (flowData.nodes.length > 0) {
+      setNodes(flowData.nodes);
+      setEdges(flowData.edges);
+    }
+  }, [flowData, setNodes, setEdges]);
+
+  // Handle search with debounce
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setSearchQuery(e.target.value);
+    },
+    []
+  );
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+  }, []);
+
+  // Handle export with loading state
+  const handleExport = useCallback(
+    async (format: "png" | "pdf" | "json") => {
+      setIsExporting(true);
+
+      // Display toast notification for loading state
+      const loadingToast = toast.loading(
+        `Exporting family tree as ${format.toUpperCase()}...`
+      );
+
+      try {
+        const exportedData = await exportTree(format);
+
+        // Create object URL and trigger download
+        const url = window.URL.createObjectURL(exportedData);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `family-tree.${format}`);
+        document.body.appendChild(link);
+        link.click();
+
+        // Clean up
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        toast.success(
+          `Family tree exported as ${format.toUpperCase()} successfully!`,
+          {
+            id: loadingToast,
+          }
+        );
+      } catch (err) {
+        console.error(`Export error (${format}):`, err);
+        toast.error(`Failed to export as ${format.toUpperCase()}`, {
+          id: loadingToast,
+        });
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [exportTree]
+  );
+
+  // Function to refresh the tree data
+  const refreshTree = useCallback(async () => {
     setIsRefreshing(true);
-    // Use SWR's mutate to revalidate data
-    await mutate();
-  };
+    try {
+      await mutate();
+      toast.success("Family tree refreshed");
+    } catch (err) {
+      toast.error("Failed to refresh family tree");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [mutate]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this family member?")) {
@@ -475,21 +663,26 @@ const FamilyTreePage = () => {
   // Helper function to get children names
   const getChildrenNames = (childrenIds: string[]) => {
     if (!childrenIds.length || !treeData) return "None";
-    return childrenIds
+
+    // Only show first 2 children names, then add "..." if there are more
+    const MAX_CHILDREN_TO_DISPLAY = 2;
+
+    const childrenNames = childrenIds
       .map((childId) => {
         const child = treeData.members.find((m) => m._id === childId);
         return child ? `${child.first_name} ${child.last_name}` : "";
       })
-      .filter(Boolean)
-      .join(", ");
-  };
+      .filter(Boolean);
 
-  // Filter members based on search query
-  const filteredMembers = treeData?.members?.filter((member) => {
-    if (!searchQuery) return true;
-    const fullName = `${member.first_name} ${member.last_name}`.toLowerCase();
-    return fullName.includes(searchQuery.toLowerCase());
-  });
+    if (childrenNames.length <= MAX_CHILDREN_TO_DISPLAY) {
+      return childrenNames.join(", ");
+    } else {
+      const displayedNames = childrenNames.slice(0, MAX_CHILDREN_TO_DISPLAY);
+      return `${displayedNames.join(", ")} ... (${
+        childrenNames.length - MAX_CHILDREN_TO_DISPLAY
+      } more)`;
+    }
+  };
 
   // Debug logs for tracking ReactFlow rendering
   useEffect(() => {
@@ -571,44 +764,6 @@ const FamilyTreePage = () => {
     treeData,
   ]);
 
-  const handleExport = useCallback(
-    async (format: "png" | "pdf" | "json") => {
-      let loadingToast: string | undefined;
-      try {
-        setIsExporting(true);
-        loadingToast = toast.loading(
-          `Exporting family tree as ${format.toUpperCase()}...`
-        );
-
-        const blob = await exportTree(format);
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `family-tree.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-
-        if (loadingToast) {
-          toast.dismiss(loadingToast);
-        }
-        toast.success(
-          `Family tree exported successfully as ${format.toUpperCase()}!`
-        );
-      } catch (error) {
-        console.error("Export failed:", error);
-        if (loadingToast) {
-          toast.dismiss(loadingToast);
-        }
-        toast.error("Failed to export family tree. Please try again.");
-      } finally {
-        setIsExporting(false);
-      }
-    },
-    [exportTree]
-  );
-
   if (loading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
@@ -658,26 +813,37 @@ const FamilyTreePage = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-grow">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiSearch className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search family members..."
+              <div className="w-full sm:w-64">
+                <SearchInput
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+                  onChange={handleSearchChange}
+                  onClear={clearSearch}
                 />
               </div>
 
-              <div className="hidden md:block">
-                <Link
-                  href="/dashboard/add-member"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+              <div className="flex gap-2">
+                <button
+                  onClick={refreshTree}
+                  disabled={isRefreshing || isLoading}
+                  className="flex items-center px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <FiPlus className="mr-2" /> Add New Member
-                </Link>
+                  {isRefreshing ? (
+                    <span className="animate-spin mr-2">⭘</span>
+                  ) : (
+                    <FiRefreshCw className="mr-2" />
+                  )}
+                  Refresh
+                </button>
+
+                {user?.role === "admin" && (
+                  <Link
+                    href="/dashboard/add-member"
+                    className="flex items-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    <FiPlus className="mr-2" />
+                    Add Member
+                  </Link>
+                )}
               </div>
             </div>
           </div>
@@ -724,7 +890,7 @@ const FamilyTreePage = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={refreshFamilyTree}
+                    onClick={refreshTree}
                     disabled={isRefreshing}
                     className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-gray-50 rounded-full transition-colors"
                     title="Refresh tree"

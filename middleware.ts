@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import * as jose from "jose";
+import { authApi } from "@/lib/api";
 
 // Optional rate limiter
 let ratelimit: any = null;
@@ -40,6 +41,12 @@ async function verifyJWT(token: string): Promise<boolean> {
     return false;
   }
 }
+
+// List of routes that require admin access
+const ADMIN_ROUTES = [
+  "/api/members$", // POST - create member
+  "/api/members/[^/]+$", // PUT, DELETE - update/delete member with any ID
+];
 
 // This function can be marked `async` if using `await` inside
 export async function middleware(request: NextRequest) {
@@ -152,6 +159,67 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Check if the current path requires admin access
+  const isAdminRoute = ADMIN_ROUTES.some((route) => {
+    const regex = new RegExp(route);
+    return regex.test(path);
+  });
+
+  console.log(
+    `Checking path: ${path}, isAdminRoute: ${isAdminRoute}, method: ${request.method}`
+  );
+
+  // If it's an admin-only route and not a GET request, verify the user is an admin
+  if (isAdminRoute && request.method !== "GET") {
+    console.log(
+      "Admin route detected with non-GET method, checking permissions"
+    );
+
+    // Get JWT token from cookies or Authorization header
+    const token =
+      request.cookies.get("token")?.value ||
+      request.headers.get("Authorization")?.replace("Bearer ", "") ||
+      "";
+
+    if (!token) {
+      console.log("No token provided for admin route");
+      return NextResponse.json(
+        { error: "Unauthorized - No auth token provided" },
+        { status: 401 }
+      );
+    }
+
+    try {
+      // Decode and verify the JWT token
+      const secret = new TextEncoder().encode(
+        process.env.JWT_SECRET || "default_secret"
+      );
+      const { payload } = await jose.jwtVerify(token, secret);
+
+      console.log(
+        "Middleware checking role:",
+        JSON.stringify(payload, null, 2)
+      );
+
+      // Check if user has admin role - ensure we're looking at the correct property
+      if (!payload.role || payload.role !== "admin") {
+        console.log("Access denied: Not admin role", { role: payload.role });
+        return NextResponse.json(
+          { error: "Forbidden - Admin access required" },
+          { status: 403 }
+        );
+      }
+
+      console.log("Admin access granted for user with role:", payload.role);
+    } catch (error) {
+      console.error("JWT verification error:", error);
+      return NextResponse.json(
+        { error: "Unauthorized - Invalid token" },
+        { status: 401 }
+      );
+    }
+  }
+
   const response = NextResponse.next();
 
   // Add security headers
@@ -160,7 +228,7 @@ export async function middleware(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://res.cloudinary.com https://cdn.pixabay.com;"
   );
 
   return response;
@@ -168,5 +236,12 @@ export async function middleware(request: NextRequest) {
 
 // See "Matching Paths" below to learn more
 export const config = {
-  matcher: ["/", "/dashboard/:path*", "/signin", "/signup", "/api/auth/:path*"],
+  matcher: [
+    "/",
+    "/dashboard/:path*",
+    "/signin",
+    "/signup",
+    "/api/auth/:path*",
+    "/api/members/:path*",
+  ],
 };

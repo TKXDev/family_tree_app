@@ -21,6 +21,7 @@ import Input from "@/components/ui/Input";
 import { signup, setUserAndToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { signIn } from "next-auth/react";
+import { usePageTitle } from "@/lib/hooks/usePageTitle";
 
 const SignupPage = () => {
   const router = useRouter();
@@ -39,6 +40,8 @@ const SignupPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Add usePageTitle hook
+  usePageTitle("Sign Up");
   // Check if user is already authenticated
   useEffect(() => {
     const checkAuthentication = async () => {

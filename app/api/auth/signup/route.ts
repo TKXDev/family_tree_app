@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,6 +31,18 @@ export async function POST(req: NextRequest) {
     // Create new user
     const user = await User.create({ name, email, password, role });
 
+    // Create token with user role
+    const token = jwt.sign(
+      {
+        userId: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role, // Include role in the token
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
     // Remove password from response
     const userWithoutPassword = {
       _id: user._id,
@@ -40,7 +55,7 @@ export async function POST(req: NextRequest) {
       {
         message: "User created successfully",
         user: userWithoutPassword,
-        token: generateToken(user._id),
+        token,
       },
       { status: 201 }
     );

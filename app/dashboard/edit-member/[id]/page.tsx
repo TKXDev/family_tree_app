@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { useDynamicPageTitle } from "@/lib/hooks/usePageTitle";
 import {
   FiArrowLeft,
   FiSave,
@@ -70,6 +71,16 @@ const EditMemberPage = ({ params }: PageProps) => {
     parent_ids: [] as string[],
     spouse_id: "",
     photo_url: "",
+  });
+
+  // Add dynamic page title
+  useDynamicPageTitle({
+    title:
+      formData.first_name && formData.last_name
+        ? `Edit ${formData.first_name} ${formData.last_name}`
+        : "Edit Member",
+    loading: isFetching,
+    error: notFound ? new Error("Member not found") : null,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});

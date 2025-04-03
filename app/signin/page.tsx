@@ -19,6 +19,7 @@ import Input from "@/components/ui/Input";
 import { signin, setUserAndToken, validateCredentials } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { signIn } from "next-auth/react";
+import { usePageTitle } from "@/lib/hooks/usePageTitle";
 
 const SigninPage = () => {
   const router = useRouter();
@@ -35,6 +36,8 @@ const SigninPage = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  usePageTitle("Sign In");
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);

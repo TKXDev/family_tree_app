@@ -37,6 +37,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    console.log("User attempting to log in:", {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
+
     // Create token
     const token = jwt.sign(
       {
@@ -51,16 +58,29 @@ export async function POST(req: NextRequest) {
 
     // User data without password
     const userData = {
-      _id: user._id,
+      id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
+      token: token, // Include token in response
     };
 
-    return NextResponse.json(
-      { message: "Login successful", user: userData, token },
+    // Set token in cookie
+    const response = NextResponse.json(
+      { message: "Login successful", user: userData },
       { status: 200 }
     );
+
+    // Set HTTP-only cookie for additional security
+    response.cookies.set("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: "/",
+    });
+
+    return response;
   } catch (error) {
     console.error("Error in signin route:", error);
     return NextResponse.json(

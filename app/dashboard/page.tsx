@@ -25,6 +25,7 @@ import { toast, Toaster } from "react-hot-toast";
 import Button from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { usePageTitle } from "@/lib/hooks/usePageTitle";
 
 const DashboardPage = () => {
   const router = useRouter();
@@ -56,6 +57,8 @@ const DashboardPage = () => {
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
+
+  usePageTitle("Dashboard");
 
   if (loading) {
     return (

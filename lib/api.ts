@@ -17,28 +17,39 @@ export interface User {
   email: string;
   name: string;
   token?: string;
+  role: "admin" | "user";
 }
 
 // Auth APIs
 export const authApi = {
   signIn: async (email: string, password: string) => {
     const response = await api.post("/auth/signin", { email, password });
-    return response.data;
+    return response.data.user;
   },
 
   signUp: async (email: string, password: string, name: string) => {
-    const response = await api.post("/auth/signup", { email, password, name });
-    return response.data;
+    const response = await api.post("/auth/signup", {
+      email,
+      password,
+      name,
+    });
+    return response.data.user;
   },
 
   signOut: async () => {
-    const response = await api.post("/auth/signout");
+    const response = await api.post("/auth/logout", {});
     return response.data;
   },
 
   getCurrentUser: async () => {
-    const response = await api.get("/auth/me");
-    return response.data;
+    try {
+      const response = await api.get("/auth/me");
+      console.log("getCurrentUser response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Error getting current user:", error);
+      throw error;
+    }
   },
 };
 
@@ -55,21 +66,37 @@ export const memberApi = {
   },
 
   createMember: async (member: Omit<Member, "id">) => {
+    const user = await authApi.getCurrentUser();
+    if (user.role !== "admin") {
+      throw new Error("Only admins can create members");
+    }
     const response = await api.post("/members", member);
     return response.data;
   },
 
   updateMember: async (id: string, member: Partial<Member>) => {
+    const user = await authApi.getCurrentUser();
+    if (user.role !== "admin") {
+      throw new Error("Only admins can update members");
+    }
     const response = await api.put(`/members/${id}`, member);
     return response.data;
   },
 
   deleteMember: async (id: string) => {
+    const user = await authApi.getCurrentUser();
+    if (user.role !== "admin") {
+      throw new Error("Only admins can delete members");
+    }
     const response = await api.delete(`/members/${id}`);
     return response.data;
   },
 
   uploadPhoto: async (id: string, file: File) => {
+    const user = await authApi.getCurrentUser();
+    if (user.role !== "admin") {
+      throw new Error("Only admins can upload photos");
+    }
     const formData = new FormData();
     formData.append("photo", file);
     const response = await api.post(`/members/${id}/photo`, formData, {
