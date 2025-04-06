@@ -3,42 +3,36 @@
 import React, { useEffect, useState } from "react";
 import { useAuth, Session } from "@/lib/hooks/useAuth";
 import { FiLogOut, FiRefreshCw, FiInfo, FiX, FiCheck } from "react-icons/fi";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDate, formatTimeAgo } from "@/lib/utils/dateFormatters";
 import { toast } from "react-hot-toast";
 
 export default function SessionManager() {
-  const {
-    sessions,
-    sessionsLoading,
-    getSessions,
-    terminateSession,
-    terminateAllOtherSessions,
-  } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const { getSessions, terminateSession, terminateAllOtherSessions } =
+    useAuth();
 
   useEffect(() => {
+    const fetchSessions = async () => {
+      if (isOpen) {
+        setSessionsLoading(true);
+        try {
+          const sessionData = await getSessions();
+          setSessions(sessionData);
+        } catch (error) {
+          console.error("Failed to fetch sessions:", error);
+          toast.error("Failed to load active sessions");
+        } finally {
+          setSessionsLoading(false);
+        }
+      }
+    };
+
     if (isOpen) {
-      getSessions();
+      fetchSessions();
     }
   }, [isOpen, getSessions]);
-
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return format(date, "PPP p"); // Example: April 29, 2023, 1:30 PM
-    } catch (error) {
-      return "Invalid date";
-    }
-  };
-
-  const formatTimeAgo = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return formatDistanceToNow(date, { addSuffix: true });
-    } catch (error) {
-      return "Unknown";
-    }
-  };
 
   const handleTerminate = async (session: Session) => {
     if (session.isCurrentSession) {

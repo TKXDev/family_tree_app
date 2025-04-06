@@ -24,6 +24,7 @@ import { uploadFile, validateFile, fileToDataUrl } from "@/lib/upload-helper";
 import Image from "next/image";
 import Cookies from "js-cookie";
 import { isAdmin } from "@/lib/auth";
+import { formatISODate } from "@/lib/utils/dateFormatters";
 
 interface FamilyMember {
   _id: string;
@@ -175,19 +176,13 @@ const EditMemberPage = ({ params }: PageProps) => {
 
         const memberData = memberResponseData;
         if (memberData.data) {
-          // Format dates
-          const formatDate = (dateString: string) => {
-            if (!dateString) return "";
-            const date = new Date(dateString);
-            return date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
-          };
-
+          // Use centralized date formatter
           setFormData({
             first_name: memberData.data.first_name,
             last_name: memberData.data.last_name,
-            birth_date: formatDate(memberData.data.birth_date),
+            birth_date: formatISODate(memberData.data.birth_date),
             death_date: memberData.data.death_date
-              ? formatDate(memberData.data.death_date)
+              ? formatISODate(memberData.data.death_date)
               : "",
             gender: memberData.data.gender,
             generation: memberData.data.generation,

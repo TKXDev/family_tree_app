@@ -13,14 +13,16 @@ import {
   FiMail,
   FiCalendar,
   FiX,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
+import { formatShortDate } from "@/lib/utils/dateFormatters";
 
 interface User {
   _id: string;
   name: string;
   email: string;
-  role: "user" | "admin" | "main_admin";
+  role: string;
   createdAt: string;
 }
 
@@ -38,6 +40,12 @@ export default function AdminUsersPage() {
     preview: string;
     expires: string;
   } | null>(null);
+  const [showPromotionModal, setShowPromotionModal] = useState(false);
+  const [userToPromote, setUserToPromote] = useState<string | null>(null);
+  const [userToPromoteName, setUserToPromoteName] = useState<string>("");
+  const [showDemotionModal, setShowDemotionModal] = useState(false);
+  const [userToDemote, setUserToDemote] = useState<string | null>(null);
+  const [userToDemoteName, setUserToDemoteName] = useState<string>("");
 
   useEffect(() => {
     // Redirect if not logged in or not an admin
@@ -72,7 +80,7 @@ export default function AdminUsersPage() {
       setUsers(
         data.data.map((user: any) => ({
           ...user,
-          role: user.role as "user" | "admin" | "main_admin",
+          role: user.role as string,
         }))
       );
     } catch (error) {
@@ -80,6 +88,36 @@ export default function AdminUsersPage() {
       toast.error("Failed to load users");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePromoteToAdmin = (userId: string, userName: string) => {
+    setUserToPromote(userId);
+    setUserToPromoteName(userName);
+    setShowPromotionModal(true);
+  };
+
+  const confirmPromotion = () => {
+    if (userToPromote) {
+      updateUserRole(userToPromote, "admin");
+      setShowPromotionModal(false);
+      setUserToPromote(null);
+      setUserToPromoteName("");
+    }
+  };
+
+  const handleDemoteToUser = (userId: string, userName: string) => {
+    setUserToDemote(userId);
+    setUserToDemoteName(userName);
+    setShowDemotionModal(true);
+  };
+
+  const confirmDemotion = () => {
+    if (userToDemote) {
+      updateUserRole(userToDemote, "user");
+      setShowDemotionModal(false);
+      setUserToDemote(null);
+      setUserToDemoteName("");
     }
   };
 
@@ -147,15 +185,6 @@ export default function AdminUsersPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
   if (loading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -176,6 +205,148 @@ export default function AdminUsersPage() {
           },
         }}
       />
+
+      {/* Promotion Confirmation Modal */}
+      {showPromotionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden transform transition-all">
+            <div className="bg-red-50 p-4 border-b border-red-100">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-red-100 rounded-full p-2">
+                  <FiAlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <h3 className="ml-3 text-lg font-medium text-red-800">
+                  Promote to Admin - Warning
+                </h3>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to promote{" "}
+                <span className="font-semibold">{userToPromoteName}</span> to
+                Admin?
+              </p>
+
+              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <FiAlertTriangle className="h-5 w-5 text-yellow-600" />
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-yellow-700">
+                      This user will gain access to sensitive features
+                      including:
+                    </p>
+                    <ul className="mt-2 text-sm text-yellow-700 list-disc list-inside">
+                      <li>User management and role changes</li>
+                      <li>System configuration settings</li>
+                      <li>Complete family tree data administration</li>
+                      <li>Access to all user information</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-500 mb-6">
+                This action will generate an admin token and provide immediate
+                admin access on their next login.
+              </p>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPromotionModal(false);
+                    setUserToPromote(null);
+                    setUserToPromoteName("");
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPromotion}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  Yes, Promote to Admin
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Demotion Confirmation Modal */}
+      {showDemotionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden transform transition-all">
+            <div className="bg-amber-50 p-4 border-b border-amber-100">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-amber-100 rounded-full p-2">
+                  <FiAlertTriangle className="h-6 w-6 text-amber-600" />
+                </div>
+                <h3 className="ml-3 text-lg font-medium text-amber-800">
+                  Demote to User - Confirmation
+                </h3>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to demote{" "}
+                <span className="font-semibold">{userToDemoteName}</span> to a
+                regular user?
+              </p>
+
+              <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <FiAlertTriangle className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-amber-700">
+                      This user will lose access to administrative features
+                      including:
+                    </p>
+                    <ul className="mt-2 text-sm text-amber-700 list-disc list-inside">
+                      <li>User management capabilities</li>
+                      <li>System configuration access</li>
+                      <li>Administrative controls over family tree data</li>
+                      <li>Access to sensitive user information</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-500 mb-6">
+                This change will take effect immediately. All existing admin
+                tokens for this user will be invalidated.
+              </p>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDemotionModal(false);
+                    setUserToDemote(null);
+                    setUserToDemoteName("");
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDemotion}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
+                >
+                  Yes, Demote to User
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="bg-white shadow-sm border-b sticky top-0 z-10">
@@ -300,7 +471,7 @@ export default function AdminUsersPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex items-center">
                           <FiCalendar className="mr-2 h-4 w-4" />
-                          {formatDate(userItem.createdAt)}
+                          {formatShortDate(userItem.createdAt)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -314,7 +485,10 @@ export default function AdminUsersPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  updateUserRole(userItem._id, "user")
+                                  handleDemoteToUser(
+                                    userItem._id,
+                                    userItem.name
+                                  )
                                 }
                                 disabled={
                                   updatingUsers[userItem._id] ||
@@ -356,7 +530,10 @@ export default function AdminUsersPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  updateUserRole(userItem._id, "admin")
+                                  handlePromoteToAdmin(
+                                    userItem._id,
+                                    userItem.name
+                                  )
                                 }
                                 disabled={
                                   updatingUsers[userItem._id] ||
@@ -440,7 +617,9 @@ export default function AdminUsersPage() {
               </div>
               <div className="flex flex-col space-y-1 mt-2">
                 <div className="text-xs text-gray-500">Expires:</div>
-                <div className="text-sm">{formatDate(tokenInfo.expires)}</div>
+                <div className="text-sm">
+                  {formatShortDate(tokenInfo.expires)}
+                </div>
               </div>
             </div>
           </div>

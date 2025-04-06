@@ -622,9 +622,47 @@ const FamilyTreePage = () => {
             id: loadingToast,
           }
         );
-      } catch (err) {
+      } catch (err: any) {
         console.error(`Export error (${format}):`, err);
-        toast.error(`Failed to export as ${format.toUpperCase()}`, {
+
+        // Check if the error response contains a JSON payload with more details
+        let errorMessage = `Failed to export as ${format.toUpperCase()}`;
+
+        try {
+          // If the error has a response that can be parsed as JSON
+          if (err.response && err.response.json) {
+            const errorData = await err.response.json();
+            if (errorData.error) {
+              errorMessage = `${errorData.error}${
+                errorData.details ? ": " + errorData.details : ""
+              }`;
+
+              // If we got JSON data back as a fallback, download it
+              if (errorData.data && format !== "json") {
+                const jsonBlob = new Blob(
+                  [JSON.stringify(errorData.data, null, 2)],
+                  {
+                    type: "application/json",
+                  }
+                );
+                const url = window.URL.createObjectURL(jsonBlob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.setAttribute("download", `family-tree-fallback.json`);
+                document.body.appendChild(link);
+                link.click();
+                link.parentNode?.removeChild(link);
+                window.URL.revokeObjectURL(url);
+
+                errorMessage += ". JSON fallback has been downloaded.";
+              }
+            }
+          }
+        } catch (jsonError) {
+          console.error("Error parsing error response:", jsonError);
+        }
+
+        toast.error(errorMessage, {
           id: loadingToast,
         });
       } finally {
