@@ -6,6 +6,7 @@ import { FiUsers, FiSettings, FiShield, FiArrowLeft } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { isAdmin } from "@/lib/auth";
 
 const AdminPage = () => {
   const router = useRouter();
@@ -15,12 +16,11 @@ const AdminPage = () => {
     // Redirect to login if not authenticated
     if (!loading && !isLoggedIn) {
       router.push("/signin");
-      return;
     }
 
     // Redirect to dashboard if not an admin
-    if (!loading && user?.role !== "admin") {
-      toast.error("Access denied: Admin privileges required");
+    if (!loading && isLoggedIn && !isAdmin(user)) {
+      toast.error("You don't have access to the admin panel");
       router.push("/dashboard");
     }
   }, [loading, isLoggedIn, router, user]);

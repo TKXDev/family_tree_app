@@ -16,8 +16,16 @@ import {
   isAuthenticated,
   logout as authLogout,
   hasPersistentLogin,
+  signin,
+  setUserAndToken,
+  saveUserToStorage,
+  isAdmin,
+  isMainAdmin,
+  canManageMembers,
+  canPromoteToAdmin,
 } from "@/lib/auth";
 import { useSession, signOut } from "next-auth/react";
+import Cookies from "js-cookie";
 
 interface AuthContextProps {
   user: User | null;
@@ -26,6 +34,21 @@ interface AuthContextProps {
   isPersistentLogin: boolean | null;
   logout: () => Promise<void>;
   checkAndSetAuth: () => Promise<boolean>;
+  signIn: (
+    email: string,
+    password: string,
+    rememberMe?: boolean
+  ) => Promise<User>;
+  signOut: () => Promise<void>;
+  getSessions: () => Promise<any[]>;
+  sessions: any[];
+  sessionsLoading: boolean;
+  terminateSession: (sessionId: string) => Promise<boolean>;
+  terminateAllOtherSessions: () => Promise<boolean>;
+  isAdmin: boolean;
+  isMainAdmin: boolean;
+  canManageMembers: boolean;
+  canPromoteToAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextProps>({
@@ -35,6 +58,17 @@ const AuthContext = createContext<AuthContextProps>({
   isPersistentLogin: null,
   logout: async () => {},
   checkAndSetAuth: async () => false,
+  signIn: async () => ({ _id: "", name: "", email: "", role: "" }),
+  signOut: async () => {},
+  getSessions: async () => [],
+  sessions: [],
+  sessionsLoading: false,
+  terminateSession: async () => false,
+  terminateAllOtherSessions: async () => false,
+  isAdmin: false,
+  isMainAdmin: false,
+  canManageMembers: false,
+  canPromoteToAdmin: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -80,13 +114,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const isUserLoggedIn = localLoggedIn || nextAuthLoggedIn;
 
       // Only update state if there's been an actual change
-      if (
-        isUserLoggedIn !== isLoggedIn ||
-        persistentLogin !== isPersistentLogin ||
-        JSON.stringify(userData) !== JSON.stringify(user)
-      ) {
+      const userChanged = JSON.stringify(userData) !== JSON.stringify(user);
+      const loginStatusChanged = isUserLoggedIn !== isLoggedIn;
+      const persistentLoginChanged = persistentLogin !== isPersistentLogin;
+
+      // Update states individually only if they changed
+      if (loginStatusChanged) {
         setIsLoggedIn(isUserLoggedIn);
+      }
+
+      if (persistentLoginChanged) {
         setIsPersistentLogin(persistentLogin || nextAuthLoggedIn);
+      }
+
+      if (userChanged && userData) {
         setUser(userData);
       }
 
@@ -98,27 +139,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(null);
       return false;
     } finally {
+      // Always ensure loading is set to false after check completes
+      if (loading) {
+        setLoading(false);
+      }
       if (!isInitialized) {
         setIsInitialized(true);
       }
-      setLoading(false);
     }
-  }, [
-    isLoggedIn,
-    isPersistentLogin,
-    isRedirecting,
-    user,
-    isInitialized,
-    session,
-    status,
-  ]);
+  }, [isRedirecting, session, status, loading, isInitialized]);
 
   // Update auth when NextAuth session changes
   useEffect(() => {
     if (status !== "loading") {
-      checkAndSetAuth();
+      // Use a flag to avoid recursive updates
+      const runCheck = async () => {
+        await checkAndSetAuth();
+      };
+      runCheck();
     }
-  }, [session, status, checkAndSetAuth]);
+  }, [session, status]); // Remove checkAndSetAuth from dependencies
 
   // Initial auth check
   useEffect(() => {
@@ -137,15 +177,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     if (!isInitialized && !isRedirecting && status !== "loading") {
       initialCheck();
+    } else if (status !== "loading" && loading) {
+      // Ensure loading is false when NextAuth is done loading
+      setLoading(false);
     }
-  }, [checkAndSetAuth, isInitialized, isRedirecting, status]);
+  }, [isInitialized, isRedirecting, status, loading]); // Remove checkAndSetAuth
 
   // Event listeners for focus
   useEffect(() => {
     // Check auth on focus (user might have logged out in another tab)
     const handleFocus = () => {
       if (!isRedirecting && isInitialized) {
-        checkAndSetAuth();
+        const runCheck = async () => {
+          await checkAndSetAuth();
+        };
+        runCheck();
       }
     };
 
@@ -154,7 +200,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       window.removeEventListener("focus", handleFocus);
     };
-  }, [checkAndSetAuth, isRedirecting, isInitialized]);
+  }, [isRedirecting, isInitialized]); // Remove checkAndSetAuth dependency
 
   const handleLogout = useCallback(async (): Promise<void> => {
     // Prevent multiple logout attempts
@@ -165,7 +211,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsRedirecting(true);
 
     try {
-      // Logout from both systems
+      console.log("Starting logout process...");
+
+      // Call the server-side logout endpoint first
+      try {
+        const response = await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+        console.log("Logout API response status:", response.status);
+      } catch (apiError) {
+        console.error("Error calling logout API:", apiError);
+        // Continue with client-side logout even if API call fails
+      }
+
+      // Local logout
       authLogout();
 
       // Also sign out from NextAuth if session exists
@@ -173,38 +233,58 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await signOut({ redirect: false });
       }
 
+      // Clear state
       setUser(null);
       setIsLoggedIn(false);
       setIsPersistentLogin(false);
 
-      // Use a small timeout to ensure cookies are cleared before redirect
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          router.push("/signin");
-          // Keep redirecting flag on until next render cycle to prevent loops
-          setTimeout(() => {
-            setIsRedirecting(false);
-            setLoading(false);
-            resolve();
-          }, 500);
-        }, 100);
-      });
+      // Force redirect to signin page
+      console.log("Redirecting to signin page...");
+      window.location.href = "/signin";
     } catch (error) {
       console.error("Logout error:", error);
       setIsRedirecting(false);
       setLoading(false);
+
+      // Try direct redirect as fallback
+      window.location.href = "/signin";
     }
   }, [router, isRedirecting, session]);
 
-  // Memoize the context value to prevent unnecessary re-renders
+  // Calculate admin status values on user change
+  const userIsAdmin = useMemo(() => isAdmin(user), [user]);
+  const userIsMainAdmin = useMemo(() => isMainAdmin(user), [user]);
+  const userCanManageMembers = useMemo(() => canManageMembers(user), [user]);
+  const userCanPromoteToAdmin = useMemo(() => canPromoteToAdmin(user), [user]);
+
+  // Build context value with all updated status
   const contextValue = useMemo(
     () => ({
       user,
-      loading: loading || status === "loading" || !isInitialized,
+      loading,
       isLoggedIn,
       isPersistentLogin,
       logout: handleLogout,
       checkAndSetAuth,
+      signIn: async (email: string, password: string, rememberMe?: boolean) => {
+        try {
+          const result = await signin(email, password, !!rememberMe);
+          await checkAndSetAuth();
+          return result.user as User;
+        } catch (error) {
+          throw error;
+        }
+      },
+      signOut: handleLogout,
+      getSessions: async () => [],
+      sessions: [],
+      sessionsLoading: false,
+      terminateSession: async () => false,
+      terminateAllOtherSessions: async () => false,
+      isAdmin: userIsAdmin,
+      isMainAdmin: userIsMainAdmin,
+      canManageMembers: userCanManageMembers,
+      canPromoteToAdmin: userCanPromoteToAdmin,
     }),
     [
       user,
@@ -215,6 +295,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isPersistentLogin,
       handleLogout,
       checkAndSetAuth,
+      userIsAdmin,
+      userIsMainAdmin,
+      userCanManageMembers,
+      userCanPromoteToAdmin,
     ]
   );
 

@@ -19,6 +19,7 @@ import {
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import { useDebounce } from "../../lib/hooks";
+import { isAdmin } from "@/lib/auth";
 
 interface FamilyMember {
   _id: string;
@@ -75,6 +76,7 @@ const ProfileImage = ({
 const SearchPage = () => {
   const router = useRouter();
   const { user, loading, isLoggedIn } = useAuth();
+  const userIsAdmin = isAdmin(user);
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -456,76 +458,91 @@ const SearchPage = () => {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-                  {members.map((member) => (
-                    <div
-                      key={member._id}
-                      className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200"
-                    >
-                      <div className="p-5">
-                        <div className="flex items-center mb-4">
-                          <div className="flex-shrink-0">
-                            <ProfileImage
-                              photoUrl={member.photo_url}
-                              firstName={member.first_name}
-                              lastName={member.last_name}
-                              size={14}
-                            />
-                          </div>
-                          <div className="ml-4">
-                            <h4 className="text-lg font-medium text-gray-900">
-                              {member.first_name} {member.last_name}
-                            </h4>
-                            <div className="flex items-center space-x-2 mt-1">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                Gen {member.generation}
-                              </span>
-                              <span className="text-sm text-gray-500 capitalize">
-                                {member.gender}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 text-sm text-gray-600 space-y-1 p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center">
-                            <FiCalendar className="h-4 w-4 mr-2 text-gray-400" />
-                            <span>
-                              <span className="font-medium">Birth:</span>{" "}
-                              {new Date(member.birth_date).toLocaleDateString()}
-                            </span>
-                          </div>
-
-                          {member.death_date && (
+                <div className="mt-8 bg-white shadow overflow-hidden rounded-lg">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Birth Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Gender
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {members.map((member) => (
+                        <tr key={member._id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
-                              <FiCalendar className="h-4 w-4 mr-2 text-gray-400" />
-                              <span>
-                                <span className="font-medium">Death:</span>{" "}
+                              <div className="flex-shrink-0 h-10 w-10">
+                                {member.photo_url ? (
+                                  <img
+                                    className="h-10 w-10 rounded-full object-cover"
+                                    src={member.photo_url}
+                                    alt={`${member.first_name} ${member.last_name}`}
+                                  />
+                                ) : (
+                                  <div className="h-10 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white">
+                                    {member.first_name.charAt(0)}
+                                    {member.last_name.charAt(0)}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {member.first_name} {member.last_name}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  Generation: {member.generation}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {new Date(member.birth_date).toLocaleDateString()}
+                            </div>
+                            {member.death_date && (
+                              <div className="text-sm text-gray-500">
+                                Died:{" "}
                                 {new Date(
                                   member.death_date
                                 ).toLocaleDateString()}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mt-4 flex justify-end space-x-2">
-                          <Link
-                            href={`/dashboard/edit-member/${member._id}`}
-                            className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                          >
-                            <FiEdit className="mr-1.5" /> Edit
-                          </Link>
-                          <Link
-                            href={`/dashboard/family-tree?highlight=${member._id}`}
-                            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                          >
-                            <FiEye className="mr-1.5" /> View in Tree
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 capitalize">
+                              {member.gender}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <Link
+                              href={`/dashboard/view-member/${member._id}`}
+                              className="text-indigo-600 hover:text-indigo-900 mr-3"
+                            >
+                              View
+                            </Link>
+                            {userIsAdmin && (
+                              <Link
+                                href={`/dashboard/edit-member/${member._id}`}
+                                className="text-indigo-600 hover:text-indigo-900"
+                              >
+                                Edit
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </>

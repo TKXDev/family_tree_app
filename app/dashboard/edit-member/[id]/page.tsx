@@ -22,6 +22,8 @@ import {
 import { toast, Toaster } from "react-hot-toast";
 import { uploadFile, validateFile, fileToDataUrl } from "@/lib/upload-helper";
 import Image from "next/image";
+import Cookies from "js-cookie";
+import { isAdmin } from "@/lib/auth";
 
 interface FamilyMember {
   _id: string;
@@ -105,7 +107,13 @@ const EditMemberPage = ({ params }: PageProps) => {
     if (!loading && !isLoggedIn) {
       router.push("/signin");
     }
-  }, [loading, isLoggedIn, router]);
+
+    // Redirect to dashboard if not an admin
+    if (!loading && isLoggedIn && !isAdmin(user)) {
+      toast.error("Only administrators can edit members");
+      router.push("/dashboard");
+    }
+  }, [loading, isLoggedIn, router, user]);
 
   // Initial load of member data and set up preview
   useEffect(() => {
@@ -138,11 +146,18 @@ const EditMemberPage = ({ params }: PageProps) => {
         }
 
         // Fetch the specific member being edited
-        const memberResponse = await fetch(`/api/member/${memberId}`, {
+        console.log("Fetching member with ID:", memberId);
+        console.log("Current user:", user);
+
+        const memberResponse = await fetch(`/api/members/${memberId}`, {
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "include", // Ensure cookies are sent with the request
         });
+
+        const memberResponseData = await memberResponse.json();
+        console.log("Member API response:", memberResponseData);
 
         if (!memberResponse.ok) {
           if (memberResponse.status === 404) {
@@ -152,11 +167,13 @@ const EditMemberPage = ({ params }: PageProps) => {
             return;
           }
           throw new Error(
-            `Failed to fetch family member: ${memberResponse.statusText}`
+            `Failed to fetch family member: ${
+              memberResponseData.error || memberResponse.statusText
+            }`
           );
         }
 
-        const memberData = await memberResponse.json();
+        const memberData = memberResponseData;
         if (memberData.data) {
           // Format dates
           const formatDate = (dateString: string) => {
@@ -331,17 +348,35 @@ const EditMemberPage = ({ params }: PageProps) => {
       if (formData.spouse_id) submitData.spouse_id = formData.spouse_id;
       if (photoUrl) submitData.photo_url = photoUrl;
 
-      const response = await fetch(`/api/member/${memberId}`, {
+      console.log("Submitting updated member data:", submitData);
+      console.log("Current user:", user);
+
+      // Make the API request
+      const response = await fetch(`/api/members/${memberId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // This ensures cookies are sent with the request
         body: JSON.stringify(submitData),
       });
 
+      // Check response status for authentication errors
+      if (response.status === 401) {
+        throw new Error("Unauthorized - Please log in again");
+      }
+
+      if (response.status === 403) {
+        throw new Error(
+          "Forbidden - You don't have permission to edit members"
+        );
+      }
+
+      const responseData = await response.json();
+      console.log("Update API response:", responseData);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update family member");
+        throw new Error(responseData.error || "Failed to update family member");
       }
 
       toast.success("Family member updated successfully");
@@ -353,6 +388,11 @@ const EditMemberPage = ({ params }: PageProps) => {
       toast.error(
         err instanceof Error ? err.message : "Failed to update family member"
       );
+
+      // If it was an authentication error, redirect to login
+      if (err instanceof Error && err.message.includes("Unauthorized")) {
+        router.push("/signin");
+      }
     } finally {
       setIsSubmitting(false);
     }

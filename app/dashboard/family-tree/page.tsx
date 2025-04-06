@@ -44,6 +44,8 @@ import useSWR from "swr";
 import { fetcher } from "../../lib/swr-config";
 import { useTree } from "@/lib/hooks/useTree";
 import { useDynamicPageTitle } from "@/lib/hooks/usePageTitle";
+import Cookies from "js-cookie";
+import { isAdmin } from "@/lib/auth";
 
 interface FamilyMember {
   _id: string;
@@ -131,11 +133,20 @@ interface MemoizedTreeProps {
   edges: Edge[];
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
+  nodeTypes: any;
+  edgeTypes: any;
 }
 
 // Memoized Tree component to prevent unnecessary re-renders
 const MemoizedTree = React.memo(
-  ({ nodes, edges, onNodesChange, onEdgesChange }: MemoizedTreeProps) => {
+  ({
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    nodeTypes,
+    edgeTypes,
+  }: MemoizedTreeProps) => {
     return (
       <ReactFlow
         nodes={nodes}
@@ -287,17 +298,21 @@ ExportButton.displayName = "ExportButton";
 const FamilyTreePage = () => {
   const router = useRouter();
   const { user, loading, isLoggedIn } = useAuth();
+  const [activeTab, setActiveTab] = useState<string>("tree");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isBrowser, setIsBrowser] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const userIsAdmin = isAdmin(user);
   const [highlightedMember, setHighlightedMember] = useState<string | null>(
     null
   );
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isBrowser, setIsBrowser] = useState(false);
   const [flowRenderError, setFlowRenderError] = useState(false);
   const {
     tree,
@@ -306,7 +321,6 @@ const FamilyTreePage = () => {
     fetchTree,
     exportTree,
   } = useTree();
-  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     setIsBrowser(true);
@@ -466,21 +480,25 @@ const FamilyTreePage = () => {
                   Generation: {member.generation}
                 </div>
                 <div className="mt-2 flex justify-center space-x-2">
-                  <Link
-                    href={`/dashboard/edit-member/${member._id}`}
-                    className="p-1 text-indigo-600 hover:text-indigo-800 transition-colors"
-                  >
-                    <FiEdit size={14} />
-                  </Link>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(member._id);
-                    }}
-                    className="p-1 text-red-500 hover:text-red-700 transition-colors"
-                  >
-                    <FiTrash2 size={14} />
-                  </button>
+                  {userIsAdmin && (
+                    <Link
+                      href={`/dashboard/edit-member/${member._id}`}
+                      className="p-1 text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                      <FiEdit size={14} />
+                    </Link>
+                  )}
+                  {userIsAdmin && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(member._id);
+                      }}
+                      className="p-1 text-red-500 hover:text-red-700 transition-colors"
+                    >
+                      <FiTrash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             ),
@@ -544,7 +562,7 @@ const FamilyTreePage = () => {
 
       return { nodes: flowNodes, edges: flowEdges };
     },
-    [highlightedMember, getNodeStyle]
+    [highlightedMember, getNodeStyle, userIsAdmin]
   );
 
   // Memoize the transformed data to prevent unnecessary recalculations
@@ -632,23 +650,62 @@ const FamilyTreePage = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this family member?")) {
       try {
-        const response = await fetch(`/api/member/${id}`, {
+        console.log("Deleting member:", id);
+        console.log("Current user:", user);
+
+        // Get token from cookies
+        const token = Cookies.get("token");
+
+        if (!token) {
+          console.error("No authentication token found");
+          toast.error("Authentication required. Please sign in again.");
+          return;
+        }
+
+        console.log(
+          "Using token for deletion:",
+          token.substring(0, 10) + "..."
+        );
+
+        const response = await fetch(`/api/members/${id}`, {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
           },
+          credentials: "include", // Ensure cookies are sent with the request
         });
 
+        const responseData = await response.json();
+        console.log("Delete API response:", responseData);
+
         if (!response.ok) {
-          throw new Error("Failed to delete family member");
+          if (response.status === 401) {
+            toast.error("Authentication failed. Please sign in again.");
+            return;
+          }
+
+          if (response.status === 403) {
+            toast.error(
+              "You don't have permission to delete family members. Admin access required."
+            );
+            console.error("Admin access denied - user role:", user?.role);
+            return;
+          }
+
+          throw new Error(
+            responseData.error || "Failed to delete family member"
+          );
         }
 
         toast.success("Family member deleted successfully");
         // Refresh data using SWR's mutate
         await mutate();
       } catch (err) {
-        console.error(err);
-        toast.error("Failed to delete family member");
+        console.error("Delete error:", err);
+        toast.error(
+          err instanceof Error ? err.message : "Failed to delete family member"
+        );
       }
     }
   };
@@ -697,6 +754,10 @@ const FamilyTreePage = () => {
     }
   }, [isBrowser, nodes.length, edges.length]);
 
+  // Memoize nodeTypes and edgeTypes to prevent recreation on each render
+  const memoizedNodeTypes = useMemo(() => ({}), []);
+  const memoizedEdgeTypes = useMemo(() => ({}), []);
+
   // Function to safely render the ReactFlow component
   const renderReactFlow = useCallback(() => {
     if (!isBrowser || nodes.length === 0 || flowRenderError) {
@@ -725,7 +786,8 @@ const FamilyTreePage = () => {
             {treeData?.members?.length === 0 &&
               isBrowser &&
               !isLoading &&
-              !flowRenderError && (
+              !flowRenderError &&
+              userIsAdmin && (
                 <Link href="/dashboard/add-member">
                   <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                     <FiPlus className="mr-2" /> Add Your First Member
@@ -745,6 +807,8 @@ const FamilyTreePage = () => {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            nodeTypes={memoizedNodeTypes}
+            edgeTypes={memoizedEdgeTypes}
           />
         </ReactFlowProvider>
       );
@@ -759,9 +823,12 @@ const FamilyTreePage = () => {
     edges,
     onNodesChange,
     onEdgesChange,
+    memoizedNodeTypes,
+    memoizedEdgeTypes,
     flowRenderError,
     isLoading,
     treeData,
+    userIsAdmin,
   ]);
 
   if (loading || isLoading) {
@@ -803,12 +870,14 @@ const FamilyTreePage = () => {
                 </h1>
               </div>
               <div className="md:hidden">
-                <Link
-                  href="/dashboard/add-member"
-                  className="inline-flex items-center p-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                >
-                  <FiPlus />
-                </Link>
+                {userIsAdmin && (
+                  <Link
+                    href="/dashboard/add-member"
+                    className="inline-flex items-center p-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                  >
+                    <FiPlus />
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -835,7 +904,7 @@ const FamilyTreePage = () => {
                   Refresh
                 </button>
 
-                {user?.role === "admin" && (
+                {userIsAdmin && (
                   <Link
                     href="/dashboard/add-member"
                     className="flex items-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -1076,20 +1145,24 @@ const FamilyTreePage = () => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex space-x-3">
-                                <Link
-                                  href={`/dashboard/edit-member/${member._id}`}
-                                  className="text-indigo-600 hover:text-indigo-900 transition-colors"
-                                  title="Edit member"
-                                >
-                                  <FiEdit className="h-5 w-5" />
-                                </Link>
-                                <button
-                                  onClick={() => handleDelete(member._id)}
-                                  className="text-red-500 hover:text-red-700 transition-colors"
-                                  title="Delete member"
-                                >
-                                  <FiTrash2 className="h-5 w-5" />
-                                </button>
+                                {userIsAdmin && (
+                                  <Link
+                                    href={`/dashboard/edit-member/${member._id}`}
+                                    className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                                    title="Edit member"
+                                  >
+                                    <FiEdit className="h-5 w-5" />
+                                  </Link>
+                                )}
+                                {userIsAdmin && (
+                                  <button
+                                    onClick={() => handleDelete(member._id)}
+                                    className="text-red-500 hover:text-red-700 transition-colors"
+                                    title="Delete member"
+                                  >
+                                    <FiTrash2 className="h-5 w-5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1109,13 +1182,15 @@ const FamilyTreePage = () => {
                                 <p className="font-medium mb-2">
                                   No family members found
                                 </p>
-                                <Link
-                                  href="/dashboard/add-member"
-                                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                                >
-                                  <FiPlus className="mr-2" /> Add Your First
-                                  Member
-                                </Link>
+                                {userIsAdmin && (
+                                  <Link
+                                    href="/dashboard/add-member"
+                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                                  >
+                                    <FiPlus className="mr-2" /> Add Your First
+                                    Member
+                                  </Link>
+                                )}
                               </div>
                             )}
                           </td>
@@ -1161,20 +1236,24 @@ const FamilyTreePage = () => {
                                 </div>
                               </div>
                               <div className="flex space-x-2">
-                                <Link
-                                  href={`/dashboard/edit-member/${member._id}`}
-                                  className="p-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-full transition-colors"
-                                  title="Edit member"
-                                >
-                                  <FiEdit className="h-5 w-5" />
-                                </Link>
-                                <button
-                                  onClick={() => handleDelete(member._id)}
-                                  className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
-                                  title="Delete member"
-                                >
-                                  <FiTrash2 className="h-5 w-5" />
-                                </button>
+                                {userIsAdmin && (
+                                  <Link
+                                    href={`/dashboard/edit-member/${member._id}`}
+                                    className="p-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-full transition-colors"
+                                    title="Edit member"
+                                  >
+                                    <FiEdit className="h-5 w-5" />
+                                  </Link>
+                                )}
+                                {userIsAdmin && (
+                                  <button
+                                    onClick={() => handleDelete(member._id)}
+                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
+                                    title="Delete member"
+                                  >
+                                    <FiTrash2 className="h-5 w-5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
 
@@ -1222,12 +1301,14 @@ const FamilyTreePage = () => {
                           <p className="font-medium mb-2">
                             No family members found
                           </p>
-                          <Link
-                            href="/dashboard/add-member"
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                          >
-                            <FiPlus className="mr-2" /> Add Your First Member
-                          </Link>
+                          {userIsAdmin && (
+                            <Link
+                              href="/dashboard/add-member"
+                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                            >
+                              <FiPlus className="mr-2" /> Add Your First Member
+                            </Link>
+                          )}
                         </div>
                       )}
                     </div>

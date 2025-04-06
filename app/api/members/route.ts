@@ -1,58 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import FamilyMember from "@/models/FamilyMember";
-import * as jose from "jose";
+import { verifyAuth } from "@/lib/server-auth";
+import * as tokenService from "@/lib/token-service";
+import jwt from "jsonwebtoken";
+import { isAdmin } from "@/lib/auth";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
-
-// Utility function to verify the admin role
-async function verifyAdminRole(req: NextRequest) {
-  // Get token from cookies or Authorization header
-  const token =
-    req.cookies.get("token")?.value ||
-    req.headers.get("Authorization")?.replace("Bearer ", "") ||
-    "";
-
-  if (!token) {
-    console.log("No token provided");
-    return {
-      authorized: false,
-      error: "Unauthorized - No token provided",
-      status: 401,
-    };
-  }
-
-  try {
-    // Decode and verify the JWT token
-    const secret = new TextEncoder().encode(JWT_SECRET);
-    const { payload } = await jose.jwtVerify(token, secret);
-
-    console.log(
-      "Token payload in members API:",
-      JSON.stringify(payload, null, 2)
-    );
-
-    // Check if user has admin role
-    if (!payload.role || payload.role !== "admin") {
-      console.log("Non-admin access attempt:", payload);
-      return {
-        authorized: false,
-        error: "Forbidden - Admin access required",
-        status: 403,
-        payload,
-      };
-    }
-
-    return { authorized: true, payload };
-  } catch (error) {
-    console.error("JWT verification error:", error);
-    return {
-      authorized: false,
-      error: "Unauthorized - Invalid token",
-      status: 401,
-    };
-  }
-}
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
 // Get all members
 export async function GET(req: NextRequest) {
@@ -74,19 +28,67 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    // Verify admin role
-    const authResult = await verifyAdminRole(req);
-    if (!authResult.authorized) {
+    // Extract and log token details for debugging
+    const token = tokenService.extractToken(req);
+    console.log("POST /api/members - Token received:", token ? "Yes" : "No");
+    if (!token) {
       return NextResponse.json(
-        { error: authResult.error, details: authResult.payload },
-        { status: authResult.status }
+        { error: "No authentication token provided" },
+        { status: 401 }
       );
     }
 
-    console.log("Admin access granted for member creation");
+    // Log token structure
+    const tokenParts = token.split(".");
+    console.log(
+      `Token format check: ${
+        tokenParts.length === 3 ? "Valid (3 parts)" : "Invalid format"
+      }`
+    );
+
+    // Try to decode the token (without verification) for debugging
+    try {
+      const decoded = jwt.decode(token);
+      console.log("Token decode result:", decoded ? "Success" : "Failed");
+      if (decoded && typeof decoded === "object") {
+        console.log("Token payload:", {
+          userId: decoded.userId || decoded.sub || "missing",
+          role: decoded.role || "missing",
+          exp: decoded.exp
+            ? new Date(decoded.exp * 1000).toISOString()
+            : "missing",
+        });
+      }
+    } catch (decodeError) {
+      console.error("Token decode error:", decodeError);
+    }
+
+    // Verify admin role using the central auth service
+    const { authenticated, user } = await verifyAuth(req);
+    console.log("Auth verification result:", {
+      authenticated,
+      userRole: user?.role,
+    });
+
+    if (!authenticated) {
+      return NextResponse.json(
+        { error: "Unauthorized - Invalid token" },
+        { status: 401 }
+      );
+    }
+
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: "Admin access required", currentRole: user?.role },
+        { status: 403 }
+      );
+    }
+
+    console.log("Admin access granted for member creation - User:", user);
 
     // Get member data from request body
     const memberData = await req.json();
+    console.log("Creating new family member:", memberData);
 
     // Create new member
     const newMember = await FamilyMember.create(memberData);
@@ -101,7 +103,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Error adding member:", error);
     return NextResponse.json(
-      { error: "Failed to add member" },
+      { error: "Failed to add member", details: (error as Error).message },
       { status: 500 }
     );
   }

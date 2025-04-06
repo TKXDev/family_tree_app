@@ -1,8 +1,9 @@
 import { useSession, signOut } from "next-auth/react";
 import { useEffect } from "react";
-import { setUserAndToken } from "@/lib/auth";
+import { saveUserToStorage } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { User } from "./auth";
+import Cookies from "js-cookie";
 
 /**
  * Hook that integrates NextAuth sessions with our custom auth system.
@@ -30,12 +31,16 @@ export function useNextAuthIntegration() {
           _id: id,
           name: name || email.split("@")[0],
           email: email,
-          role: role || "user",
+          role: (role || "user") as "user" | "admin" | "main_admin",
         };
 
-        // Save user and token to our custom auth system
-        // Using a placeholder token since NextAuth handles the actual session
-        setUserAndToken(authUser, "nextauth_session", true);
+        // Save user to storage (persistent)
+        saveUserToStorage(authUser, true);
+
+        // Mark this as a NextAuth session
+        Cookies.set("nextauth_integration", "true", {
+          expires: 30,
+        });
 
         // Force update our auth context
         checkAndSetAuth();
@@ -47,7 +52,8 @@ export function useNextAuthIntegration() {
     if (
       status === "unauthenticated" &&
       isLoggedIn &&
-      user?._id.startsWith("oauth_")
+      (user?._id?.startsWith("oauth_") ||
+        Cookies.get("nextauth_integration") === "true")
     ) {
       // Log out from our custom system
       signOut({ redirect: false });
@@ -72,6 +78,9 @@ export const getUserFromSession = (session: {
     _id: (session.user.id as string) || "",
     name: (session.user.name as string) || "",
     email: (session.user.email as string) || "",
-    role: (session.user.role as string) || "user",
+    role: ((session.user.role as string) || "user") as
+      | "user"
+      | "admin"
+      | "main_admin",
   };
 };

@@ -48,6 +48,11 @@ const ADMIN_ROUTES = [
   "/api/members/[^/]+$", // PUT, DELETE - update/delete member with any ID
 ];
 
+// Update admin check - rename to checkIsAdmin to avoid name conflict
+function checkIsAdmin(role: string | undefined): boolean {
+  return role === "admin" || role === "main_admin";
+}
+
 // This function can be marked `async` if using `await` inside
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -91,8 +96,11 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/_next") ||
     path.startsWith("/api/auth");
 
-  // Get traditional token from cookies with secure flags
-  const traditionalToken = request.cookies.get("token")?.value || "";
+  // Define admin-only paths that require admin role
+  const isAdminPath =
+    path.startsWith("/dashboard/add-member") ||
+    path.startsWith("/dashboard/edit-member") ||
+    path === "/dashboard/admin";
 
   // Check for next-auth session token
   let nextAuthToken = null;
@@ -104,6 +112,38 @@ export async function middleware(request: NextRequest) {
   } catch (error) {
     console.error("Error getting NextAuth token:", error);
   }
+
+  // Get traditional token from cookies or header with better extraction
+  const authHeader = request.headers.get("Authorization") || "";
+
+  // Check all our possible token cookies in order of preference
+  const adminToken =
+    request.cookies.get("admin_token")?.value ||
+    request.cookies.get("visible_admin_token")?.value;
+
+  const appToken = request.cookies.get("app_token")?.value;
+
+  // Get token cookie, but avoid using NextAuth session
+  const tokenCookie = request.cookies.get("token")?.value;
+  const isNextAuthToken = tokenCookie === "nextauth_session";
+  const tokenValue = isNextAuthToken ? null : tokenCookie;
+
+  // Combine all token sources, with priority order
+  const traditionalToken =
+    adminToken ||
+    appToken ||
+    tokenValue ||
+    (authHeader.startsWith("Bearer ") ? authHeader.substring(7) : "");
+
+  // Log token presence for debugging
+  console.log(
+    `Path ${path}: Token present: ${!!traditionalToken || !!nextAuthToken}`,
+    `Admin token: ${!!adminToken}`,
+    `App token: ${!!appToken}`,
+    `Token cookie: ${!!tokenCookie}${isNextAuthToken ? " (NextAuth)" : ""}`,
+    `Traditional token: ${!!traditionalToken}`,
+    `NextAuth token: ${!!nextAuthToken}`
+  );
 
   // User is authenticated if either token is present
   const isAuthenticated = !!nextAuthToken || !!traditionalToken;
@@ -128,6 +168,7 @@ export async function middleware(request: NextRequest) {
   // If trying to access dashboard without being logged in, redirect to signin
   if (!isPublicPath && !isAuthenticated) {
     const url = new URL("/signin", request.nextUrl.origin);
+    url.searchParams.set("callbackUrl", path);
     const response = NextResponse.redirect(url);
     response.headers.set("x-redirect-count", (redirectCount + 1).toString());
     return response;
@@ -175,10 +216,25 @@ export async function middleware(request: NextRequest) {
       "Admin route detected with non-GET method, checking permissions"
     );
 
-    // Get JWT token from cookies or Authorization header
+    // Get JWT token from cookies or Authorization header in order of preference
+    const authHeader = request.headers.get("Authorization") || "";
+    const adminToken =
+      request.cookies.get("admin_token")?.value ||
+      request.cookies.get("visible_admin_token")?.value;
+
+    const appToken = request.cookies.get("app_token")?.value;
+
+    // Get token cookie, but avoid using NextAuth session
+    const tokenCookie = request.cookies.get("token")?.value;
+    const isNextAuthToken = tokenCookie === "nextauth_session";
+    const tokenValue = isNextAuthToken ? null : tokenCookie;
+
+    // Combine all token sources, with priority order
     const token =
-      request.cookies.get("token")?.value ||
-      request.headers.get("Authorization")?.replace("Bearer ", "") ||
+      adminToken ||
+      appToken ||
+      tokenValue ||
+      (authHeader.startsWith("Bearer ") ? authHeader.substring(7) : "") ||
       "";
 
     if (!token) {
@@ -201,11 +257,14 @@ export async function middleware(request: NextRequest) {
         JSON.stringify(payload, null, 2)
       );
 
-      // Check if user has admin role - ensure we're looking at the correct property
-      if (!payload.role || payload.role !== "admin") {
+      // Check if user has admin role
+      if (
+        !payload.role ||
+        !(payload.role === "admin" || payload.role === "main_admin")
+      ) {
         console.log("Access denied: Not admin role", { role: payload.role });
         return NextResponse.json(
-          { error: "Forbidden - Admin access required" },
+          { error: "Admin access required" },
           { status: 403 }
         );
       }
@@ -217,6 +276,62 @@ export async function middleware(request: NextRequest) {
         { error: "Unauthorized - Invalid token" },
         { status: 401 }
       );
+    }
+  }
+
+  // Admin role check for admin-only paths
+  if (isAdminPath && isAuthenticated) {
+    console.log(`Checking admin access for path: ${path}`);
+    let isAdmin = false;
+
+    // Check if user has admin role via NextAuth
+    if (nextAuthToken) {
+      isAdmin = checkIsAdmin(nextAuthToken.role as string);
+      console.log(
+        `NextAuth admin check: ${isAdmin}, role: ${nextAuthToken.role}`
+      );
+    }
+
+    // If not admin via NextAuth, try traditional token
+    if (!isAdmin && traditionalToken) {
+      try {
+        // Decode the token
+        const secret = new TextEncoder().encode(
+          process.env.JWT_SECRET || "default_secret"
+        );
+        const { payload } = await jose.jwtVerify(traditionalToken, secret);
+
+        console.log(
+          "Traditional token payload:",
+          JSON.stringify(payload, null, 2)
+        );
+
+        // Check if user has admin role
+        isAdmin = checkIsAdmin(payload.role as string);
+        console.log(`Token admin check: ${isAdmin}, role: ${payload.role}`);
+
+        if (!isAdmin) {
+          console.log("Non-admin user trying to access admin path");
+          // Redirect non-admin users to dashboard with a query parameter
+          const url = new URL("/dashboard?error=adminRequired", request.url);
+          const response = NextResponse.redirect(url);
+
+          // Set a temporary cookie to show an error message
+          response.cookies.set("auth_error", "Admin access required", {
+            maxAge: 30, // 30 seconds
+            path: "/",
+          });
+
+          return response;
+        }
+      } catch (error) {
+        console.error("Token verification error:", error);
+        // If token is invalid, redirect to login
+        const url = new URL("/signin", request.url);
+        url.searchParams.set("callbackUrl", path);
+        url.searchParams.set("error", "invalidToken");
+        return NextResponse.redirect(url);
+      }
     }
   }
 
@@ -237,11 +352,6 @@ export async function middleware(request: NextRequest) {
 // See "Matching Paths" below to learn more
 export const config = {
   matcher: [
-    "/",
-    "/dashboard/:path*",
-    "/signin",
-    "/signup",
-    "/api/auth/:path*",
-    "/api/members/:path*",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.jpg$).*)",
   ],
 };

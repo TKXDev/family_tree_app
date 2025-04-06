@@ -48,15 +48,25 @@ const SignupPage = () => {
       // Use the context's authentication check
       const isAuthenticated = await checkAndSetAuth();
 
-      // Only redirect if authenticated and not already redirecting
       if (isAuthenticated && !redirecting && !authLoading) {
         setRedirecting(true);
         router.push("/dashboard");
       }
     };
 
-    checkAuthentication();
+    if (!redirecting && !authLoading) {
+      checkAuthentication();
+    }
   }, [router, redirecting, authLoading, checkAndSetAuth, isLoggedIn]);
+
+  // Ensure loading states are properly managed
+  useEffect(() => {
+    // Reset local loading states when context reports user is logged in
+    if (isLoggedIn && !authLoading && (isLoading || isGoogleLoading)) {
+      setIsLoading(false);
+      setIsGoogleLoading(false);
+    }
+  }, [isLoggedIn, authLoading, isLoading, isGoogleLoading]);
 
   // Handle URL errors from NextAuth
   useEffect(() => {

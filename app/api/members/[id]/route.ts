@@ -1,63 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import FamilyMember from "@/models/FamilyMember";
-import * as jose from "jose";
-
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
+import { verifyAuth } from "@/lib/server-auth";
+import { isAdmin } from "@/lib/auth";
 
 interface Params {
   params: {
     id: string;
   };
-}
-
-// Utility function to verify the admin role
-async function verifyAdminRole(req: NextRequest) {
-  // Get token from cookies or Authorization header
-  const token =
-    req.cookies.get("token")?.value ||
-    req.headers.get("Authorization")?.replace("Bearer ", "") ||
-    "";
-
-  if (!token) {
-    console.log("No token provided");
-    return {
-      authorized: false,
-      error: "Unauthorized - No token provided",
-      status: 401,
-    };
-  }
-
-  try {
-    // Decode and verify the JWT token
-    const secret = new TextEncoder().encode(JWT_SECRET);
-    const { payload } = await jose.jwtVerify(token, secret);
-
-    console.log(
-      "Token payload in member[id] API:",
-      JSON.stringify(payload, null, 2)
-    );
-
-    // Check if user has admin role
-    if (!payload.role || payload.role !== "admin") {
-      console.log("Non-admin access attempt:", payload);
-      return {
-        authorized: false,
-        error: "Forbidden - Admin access required",
-        status: 403,
-        payload,
-      };
-    }
-
-    return { authorized: true, payload };
-  } catch (error) {
-    console.error("JWT verification error:", error);
-    return {
-      authorized: false,
-      error: "Unauthorized - Invalid token",
-      status: 401,
-    };
-  }
 }
 
 // Get a single member
@@ -86,12 +36,34 @@ export async function PUT(req: NextRequest, { params }: Params) {
   try {
     await connectDB();
 
-    // Check if user is admin
-    const authResult = await verifyAdminRole(req);
-    if (!authResult.authorized) {
+    console.log("Starting member update request for ID:", params.id);
+
+    // Verify admin role using the central auth service
+    const { authenticated, user } = await verifyAuth(req);
+
+    if (!authenticated) {
+      console.log("Authentication failed: No valid token");
       return NextResponse.json(
-        { error: authResult.error, details: authResult.payload },
-        { status: authResult.status }
+        { error: "Unauthorized - Invalid token" },
+        { status: 401 }
+      );
+    }
+
+    if (!user) {
+      console.log("Authentication failed: No user data in token");
+      return NextResponse.json(
+        { error: "Unauthorized - Invalid user data" },
+        { status: 401 }
+      );
+    }
+
+    console.log("User authenticated with role:", user.role);
+
+    if (!isAdmin(user)) {
+      console.log("Authorization failed: User is not an admin");
+      return NextResponse.json(
+        { error: "Forbidden - Admin access required" },
+        { status: 403 }
       );
     }
 
@@ -100,14 +72,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const { id } = params;
     const updateData = await req.json();
 
+    console.log("Updating member with data:", {
+      id,
+      fields: Object.keys(updateData),
+    });
+
     const updatedMember = await FamilyMember.findByIdAndUpdate(id, updateData, {
       new: true,
     });
 
     if (!updatedMember) {
+      console.log("Member not found with ID:", id);
       return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
+    console.log("Member updated successfully");
     return NextResponse.json(
       {
         message: "Member updated successfully",
@@ -117,10 +96,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
     );
   } catch (error) {
     console.error("Error updating member:", error);
-    return NextResponse.json(
-      { error: "Failed to update member" },
-      { status: 500 }
-    );
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to update member";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -129,12 +107,20 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     await connectDB();
 
-    // Check if user is admin
-    const authResult = await verifyAdminRole(req);
-    if (!authResult.authorized) {
+    // Verify admin role using the central auth service
+    const { authenticated, user } = await verifyAuth(req);
+
+    if (!authenticated) {
       return NextResponse.json(
-        { error: authResult.error, details: authResult.payload },
-        { status: authResult.status }
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
       );
     }
 

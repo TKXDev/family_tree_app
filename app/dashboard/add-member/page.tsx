@@ -22,6 +22,8 @@ import {
 import { toast, Toaster } from "react-hot-toast";
 import { uploadFile, validateFile, fileToDataUrl } from "@/lib/upload-helper";
 import Image from "next/image";
+import Cookies from "js-cookie";
+import { isAdmin } from "@/lib/auth";
 
 interface FamilyMember {
   _id: string;
@@ -77,17 +79,43 @@ const AddMemberPage = () => {
   useEffect(() => {
     // Redirect to login if not authenticated
     if (!loading && !isLoggedIn) {
+      console.log("Not logged in, redirecting to signin");
       router.push("/signin");
+      return;
     }
-  }, [loading, isLoggedIn, router]);
+
+    // Redirect to dashboard if not an admin
+    if (!loading && isLoggedIn && !isAdmin(user)) {
+      console.log(
+        "Not admin, redirecting to dashboard. User role:",
+        user?.role
+      );
+      toast.error("Only administrators can add new members");
+      router.push("/dashboard");
+    } else if (!loading && isLoggedIn) {
+      console.log("User authenticated as admin:", user?.role);
+    }
+  }, [loading, isLoggedIn, router, user]);
 
   useEffect(() => {
     // Fetch existing members for parent and spouse selection
     const fetchExistingMembers = async () => {
       try {
+        // Try to get token directly - look for admin tokens first
+        const adminToken =
+          Cookies.get("admin_token") || Cookies.get("visible_admin_token");
+        const regularToken = Cookies.get("token");
+        const token = adminToken || regularToken;
+
+        console.log(
+          "Fetching members with token:",
+          token ? "Found token" : "No token"
+        );
+
         const response = await fetch("/api/family-tree", {
           headers: {
             "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
           },
         });
 
@@ -228,28 +256,157 @@ const AddMemberPage = () => {
       if (formData.spouse_id) submitData.spouse_id = formData.spouse_id;
       if (photoUrl) submitData.photo_url = photoUrl;
 
-      const response = await fetch("/api/member", {
+      console.log("Submitting member data:", submitData);
+      console.log("Current user:", user);
+
+      // First check if we can use our authenticated context
+      if (!isLoggedIn || !user || !isAdmin(user)) {
+        console.error("User is not logged in or not an admin");
+        toast.error("You must be an admin to add a family member");
+        router.push("/dashboard");
+        return;
+      }
+
+      // Try to get token directly - look for admin tokens first
+      const adminToken =
+        Cookies.get("admin_token") || Cookies.get("visible_admin_token");
+      const regularToken = Cookies.get("token");
+      const token = adminToken || regularToken;
+
+      console.log("Found tokens in cookies:", {
+        adminToken: !!adminToken,
+        regularToken: !!regularToken,
+        usingToken: token
+          ? adminToken
+            ? "admin_token"
+            : "regular_token"
+          : "none",
+      });
+
+      let tokenToUse = token;
+
+      if (!tokenToUse) {
+        // Try to regenerate the token first - include user email for server identification
+        try {
+          console.log(
+            "No token found - trying to regenerate token with email:",
+            user?.email
+          );
+          const refreshUrl = user?.email
+            ? `/api/auth/regenerate-token?email=${encodeURIComponent(
+                user.email
+              )}`
+            : "/api/auth/regenerate-token";
+
+          const refreshResponse = await fetch(refreshUrl, {
+            method: "GET",
+            credentials: "include", // Allow cookies to be set
+          });
+
+          if (refreshResponse.ok) {
+            const refreshData = await refreshResponse.json();
+            console.log("Token regenerated successfully:", refreshData.success);
+
+            // Use the token directly from the response if available
+            if (refreshData.token) {
+              console.log("Using token from API response");
+              tokenToUse = refreshData.token;
+            } else {
+              // Try to get the token from cookies again in case it was set by the API
+              const newAdminToken =
+                Cookies.get("admin_token") ||
+                Cookies.get("visible_admin_token");
+              const newRegularToken = Cookies.get("token");
+              tokenToUse = newAdminToken || newRegularToken;
+            }
+
+            if (!tokenToUse) {
+              console.error("Still no token after refresh");
+              toast.error(
+                "Failed to obtain authentication token. Please try logging out and back in."
+              );
+              setIsSubmitting(false);
+              return;
+            }
+
+            toast.success("Authentication refreshed, trying again...");
+          } else {
+            const errorData = await refreshResponse
+              .json()
+              .catch(() => ({ error: "Unknown error" }));
+            console.error("Could not regenerate token:", errorData);
+            toast.error("Authentication failed. Please sign in again.");
+            router.push("/signin");
+            setIsSubmitting(false);
+            return;
+          }
+        } catch (refreshError) {
+          console.error("Token refresh error:", refreshError);
+          toast.error("Authentication error. Please sign in again.");
+          router.push("/signin");
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Use the token we found or received
+      console.log(
+        "Using token for request:",
+        tokenToUse.substring(0, 10) + "..."
+      );
+      const response = await fetch("/api/members", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${tokenToUse}`,
         },
         body: JSON.stringify(submitData),
+        credentials: "include",
       });
 
+      await handleApiResponse(response);
+    } catch (err) {
+      console.error("Form submission error:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to add family member"
+      );
+      setIsSubmitting(false);
+    }
+  };
+
+  // Helper function to handle API response
+  const handleApiResponse = async (response: Response) => {
+    try {
+      const responseData = await response.json();
+      console.log("API response:", responseData);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to add family member");
+        const errorMessage =
+          responseData.error || "Failed to add family member";
+        console.error(`API error (${response.status}):`, errorMessage);
+
+        if (response.status === 401) {
+          toast.error("Your session has expired. Please sign in again.");
+          router.push("/signin");
+        } else if (response.status === 403) {
+          toast.error(
+            "You don't have permission to add family members. Admin access required."
+          );
+          router.push("/dashboard");
+        } else {
+          toast.error(errorMessage);
+        }
+
+        throw new Error(errorMessage);
       }
 
       toast.success("Family member added successfully");
 
       // Redirect to family tree page
       router.push("/dashboard/family-tree");
-    } catch (err) {
-      console.error(err);
-      toast.error(
-        err instanceof Error ? err.message : "Failed to add family member"
-      );
+    } catch (error) {
+      console.error("Error handling API response:", error);
+      throw error;
     } finally {
       setIsSubmitting(false);
     }

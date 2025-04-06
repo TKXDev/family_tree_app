@@ -20,18 +20,21 @@ import {
   FiHeart,
   FiInfo,
   FiStar,
+  FiShield,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import Button from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 import { usePageTitle } from "@/lib/hooks/usePageTitle";
+import { isAdmin } from "@/lib/auth";
 
 const DashboardPage = () => {
   const router = useRouter();
   const { user, loading, isLoggedIn, isPersistentLogin, logout } = useAuth();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -40,14 +43,57 @@ const DashboardPage = () => {
     }
   }, [loading, isLoggedIn, router]);
 
+  // Ensure the loading state immediately affects the UI
+  useEffect(() => {
+    // Force a re-render when loading state changes
+    if (!loading && user) {
+      // Loading complete and user is available
+      const timer = setTimeout(() => {
+        // This is just to trigger a re-render and ensure loading screen closes
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, user]);
+
   const handleLogoutClick = () => {
     setShowLogoutDialog(true);
   };
 
-  const handleLogoutConfirm = () => {
-    logout();
-    toast.success("Logged out successfully");
-    setShowLogoutDialog(false);
+  const handleLogoutConfirm = async () => {
+    try {
+      setIsSubmitting(true);
+
+      // Call logout function from AuthContext
+      await logout();
+
+      // Show success message
+      toast.success("Logged out successfully");
+
+      // Clear any potential cookies that might be keeping the session alive
+      document.cookie.split(";").forEach(function (c) {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+
+      // Clear localStorage as backup
+      localStorage.removeItem("token");
+      localStorage.removeItem("persistent_login");
+
+      // Force redirect with window.location (more reliable than router)
+      window.location.href = "/signin";
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast.error("Logout failed. Please try again.");
+      setShowLogoutDialog(false);
+      setIsSubmitting(false);
+
+      // Even if there's an error, try to force logout
+      setTimeout(() => {
+        localStorage.clear();
+        window.location.href = "/signin";
+      }, 2000);
+    }
   };
 
   const handleLogoutCancel = () => {
@@ -107,15 +153,45 @@ const DashboardPage = () => {
               <div className="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row-reverse space-y-2 sm:space-y-0 sm:space-x-2 sm:space-x-reverse">
                 <button
                   type="button"
-                  className="w-full sm:w-auto flex justify-center items-center px-5 py-3 rounded-lg bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-150"
+                  className="w-full sm:w-auto flex justify-center items-center px-5 py-3 rounded-lg bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-150 disabled:opacity-70"
                   onClick={handleLogoutConfirm}
+                  disabled={isSubmitting}
                 >
-                  <FiLogOut className="mr-2" /> Logout
+                  {isSubmitting ? (
+                    <>
+                      <svg
+                        className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Logging out...
+                    </>
+                  ) : (
+                    <>
+                      <FiLogOut className="mr-2" /> Logout
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"
                   className="w-full sm:w-auto flex justify-center items-center px-5 py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-150"
                   onClick={handleLogoutCancel}
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </button>
@@ -184,7 +260,7 @@ const DashboardPage = () => {
                 Logout
               </button>
 
-              {user?.role === "admin" && (
+              {isAdmin(user) && (
                 <Link
                   href="/dashboard/admin"
                   className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors"
@@ -219,7 +295,7 @@ const DashboardPage = () => {
               </div>
             </div>
 
-            {user?.role === "admin" && (
+            {isAdmin(user) && (
               <Link
                 href="/dashboard/admin"
                 className="flex items-center px-4 py-3 text-base font-medium text-indigo-600"
@@ -288,7 +364,7 @@ const DashboardPage = () => {
               className="group bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
             >
               <div className="p-4 flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors mb-3">
+                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors mb-3">
                   <FiUsers size={24} />
                 </div>
                 <p className="font-medium text-gray-900">Family Tree</p>
@@ -307,19 +383,21 @@ const DashboardPage = () => {
               </div>
             </Link>
 
-            <Link
-              href="/dashboard/add-member"
-              className="group bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
-            >
-              <div className="p-4 flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors mb-3">
-                  <FiPlus size={24} />
+            {isAdmin(user) && (
+              <Link
+                href="/dashboard/add-member"
+                className="group bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+              >
+                <div className="p-4 flex flex-col items-center text-center">
+                  <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors mb-3">
+                    <FiPlus size={24} />
+                  </div>
+                  <p className="font-medium text-gray-900">Add Member</p>
                 </div>
-                <p className="font-medium text-gray-900">Add Member</p>
-              </div>
-            </Link>
+              </Link>
+            )}
 
-            {user?.role === "admin" && (
+            {isAdmin(user) && (
               <Link
                 href="/dashboard/admin"
                 className="group bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
@@ -332,148 +410,139 @@ const DashboardPage = () => {
                 </div>
               </Link>
             )}
+
+            {isAdmin(user) && (
+              <Link
+                href="/dashboard/admin/users"
+                className="group bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+              >
+                <div className="p-4 flex flex-col items-center text-center">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors mb-3">
+                    <FiShield size={24} />
+                  </div>
+                  <p className="font-medium text-gray-900">User Management</p>
+                </div>
+              </Link>
+            )}
           </div>
         </div>
 
         {/* Main Dashboard Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 p-6">
           {/* Family Tree Card */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition-all hover:shadow-md">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="h-12 w-12 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
-                  <FiUsers size={24} />
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Family Tree
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    View and manage your family connections
-                  </p>
+          <div className="bg-white rounded-xl shadow-md overflow-hidden transition-all hover:shadow-lg">
+            <div className="h-3 bg-gradient-to-r from-green-400 to-green-600"></div>
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div className="bg-green-100 rounded-full p-3">
+                  <FiUsers className="h-6 w-6 text-green-600" />
                 </div>
               </div>
+              <h3 className="mt-4 text-xl font-semibold text-gray-800">
+                Family Tree
+              </h3>
+              <p className="mt-2 text-gray-600 text-sm">
+                View and explore your family tree visualizations
+              </p>
               <div className="mt-5">
-                <p className="text-sm text-gray-600">
-                  Visualize your family relationships, add connections, and
-                  explore your ancestry.
-                </p>
+                <Link
+                  href="/dashboard/family-tree"
+                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                >
+                  <FiUsers className="mr-2" /> View Family Tree
+                </Link>
               </div>
             </div>
-            <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 px-6 py-4">
-              <Link
-                href="/dashboard/family-tree"
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center"
-              >
-                View family tree
-                <svg
-                  className="ml-1 h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+          </div>
+
+          {/* Members Card */}
+          <div className="bg-white rounded-xl shadow-md overflow-hidden transition-all hover:shadow-lg">
+            <div className="h-3 bg-gradient-to-r from-blue-400 to-blue-600"></div>
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div className="bg-blue-100 rounded-full p-3">
+                  <FiGrid className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+              <h3 className="mt-4 text-xl font-semibold text-gray-800">
+                Members
+              </h3>
+              <p className="mt-2 text-gray-600 text-sm">
+                Browse and manage all family members
+              </p>
+              <div className="mt-5 space-y-3">
+                <Link
+                  href="/dashboard/members"
+                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </Link>
+                  <FiGrid className="mr-2" /> View Members
+                </Link>
+
+                {isAdmin(user) && (
+                  <Link
+                    href="/dashboard/add-member"
+                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    <FiPlus className="mr-2" /> Add New Member
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Search Card */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition-all hover:shadow-md">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="h-12 w-12 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
-                  <FiSearch size={24} />
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Search & Filter
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Find specific family members
-                  </p>
+          <div className="bg-white rounded-xl shadow-md overflow-hidden transition-all hover:shadow-lg">
+            <div className="h-3 bg-gradient-to-r from-purple-400 to-purple-600"></div>
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <div className="bg-purple-100 rounded-full p-3">
+                  <FiSearch className="h-6 w-6 text-purple-600" />
                 </div>
               </div>
+              <h3 className="mt-4 text-xl font-semibold text-gray-800">
+                Search
+              </h3>
+              <p className="mt-2 text-gray-600 text-sm">
+                Find specific family members quickly
+              </p>
               <div className="mt-5">
-                <p className="text-sm text-gray-600">
-                  Search by name, generation, or relationship to find family
-                  members quickly.
-                </p>
-              </div>
-            </div>
-            <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 px-6 py-4">
-              <Link
-                href="/dashboard/search"
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center"
-              >
-                Search members
-                <svg
-                  className="ml-1 h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                <Link
+                  href="/dashboard/search"
+                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </Link>
+                  <FiSearch className="mr-2" /> Search Members
+                </Link>
+              </div>
             </div>
           </div>
 
-          {/* Add Member Card */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition-all hover:shadow-md">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="h-12 w-12 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
-                  <FiPlus size={24} />
+          {/* Admin Card - Only visible to admins */}
+          {isAdmin(user) && (
+            <div className="bg-white rounded-xl shadow-md overflow-hidden transition-all hover:shadow-lg">
+              <div className="h-3 bg-gradient-to-r from-red-400 to-red-600"></div>
+              <div className="p-5">
+                <div className="flex items-center justify-between">
+                  <div className="bg-red-100 rounded-full p-3">
+                    <FiShield className="h-6 w-6 text-red-600" />
+                  </div>
                 </div>
-                <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Add Member
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Create new family entries
-                  </p>
-                </div>
-              </div>
-              <div className="mt-5">
-                <p className="text-sm text-gray-600">
-                  Add new family members with details like birth dates, photos,
-                  and relationships.
+                <h3 className="mt-4 text-xl font-semibold text-gray-800">
+                  Admin
+                </h3>
+                <p className="mt-2 text-gray-600 text-sm">
+                  Manage users and system settings
                 </p>
+                <div className="mt-5 space-y-3">
+                  <Link
+                    href="/dashboard/admin/users"
+                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                  >
+                    <FiUsers className="mr-2" /> User Management
+                  </Link>
+                </div>
               </div>
             </div>
-            <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 px-6 py-4">
-              <Link
-                href="/dashboard/add-member"
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center"
-              >
-                Add new member
-                <svg
-                  className="ml-1 h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </Link>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Recent Activity */}
@@ -499,11 +568,18 @@ const DashboardPage = () => {
                 members and create connections.
               </p>
               <div className="mt-6">
-                <Link href="/dashboard/add-member">
-                  <button className="inline-flex items-center px-5 py-3 border border-transparent shadow-sm rounded-lg text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
-                    <FiPlus className="mr-2" /> Start Building
-                  </button>
-                </Link>
+                {isAdmin(user) && (
+                  <Link href="/dashboard/add-member">
+                    <button className="inline-flex items-center px-5 py-3 border border-transparent shadow-sm rounded-lg text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                      <FiPlus className="mr-2" /> Start Building
+                    </button>
+                  </Link>
+                )}
+                {!isAdmin(user) && (
+                  <div className="inline-flex items-center px-5 py-3 border border-amber-200 rounded-lg text-sm font-medium text-amber-700 bg-amber-50">
+                    <FiInfo className="mr-2" /> Only admins can add members
+                  </div>
+                )}
               </div>
             </div>
           </div>

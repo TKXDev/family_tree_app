@@ -18,12 +18,12 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { signin, setUserAndToken, validateCredentials } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
-import { signIn } from "next-auth/react";
+import { signIn as nextAuthSignIn } from "next-auth/react";
 import { usePageTitle } from "@/lib/hooks/usePageTitle";
 
 const SigninPage = () => {
   const router = useRouter();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, signIn } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -63,8 +63,10 @@ const SigninPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Login form submitted");
 
     if (!validateForm()) {
+      console.log("Form validation failed");
       return;
     }
 
@@ -72,16 +74,15 @@ const SigninPage = () => {
     setAuthError(null);
 
     try {
-      const result = await signin(formData.email, formData.password);
-      if (result.error) {
-        setAuthError(result.error);
-        toast.error(result.error);
-      } else {
-        setUserAndToken(result.user, result.token, rememberMe);
-        toast.success("Signed in successfully!");
-        router.push("/dashboard");
-      }
+      console.log("Attempting to sign in with:", formData.email);
+      const result = await signIn(
+        formData.email,
+        formData.password,
+        rememberMe
+      );
+      console.log("Sign in result:", result);
     } catch (err) {
+      console.error("Sign in error:", err);
       const errorMessage =
         err instanceof Error
           ? err.message
@@ -98,7 +99,7 @@ const SigninPage = () => {
       setIsGoogleLoading(true);
       setAuthError(null);
 
-      const result = await signIn("google", {
+      const result = await nextAuthSignIn("google", {
         callbackUrl: "/dashboard",
         redirect: false,
       });
@@ -123,6 +124,15 @@ const SigninPage = () => {
       router.push("/dashboard");
     }
   }, [isLoggedIn, router]);
+
+  // Ensure loading states are properly managed
+  React.useEffect(() => {
+    // Reset local loading state when user completes successful sign-in
+    if (isLoggedIn && (isLoading || isGoogleLoading)) {
+      setIsLoading(false);
+      setIsGoogleLoading(false);
+    }
+  }, [isLoggedIn, isLoading, isGoogleLoading]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
@@ -319,58 +329,52 @@ const SigninPage = () => {
                 )}
               </div>
 
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                />
-                <label
-                  htmlFor="remember-me"
-                  className="ml-2 block text-sm text-gray-700"
-                >
-                  Keep me signed in for 30 days
-                </label>
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center">
+                  <input
+                    id="remember-me"
+                    name="remember-me"
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={() => setRememberMe(!rememberMe)}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <label
+                    htmlFor="remember-me"
+                    className="ml-2 block text-sm text-gray-700"
+                  >
+                    Remember me
+                  </label>
+                </div>
+                <div className="text-sm">
+                  <Link
+                    href="/forgot-password"
+                    className="font-medium text-indigo-600 hover:text-indigo-500"
+                  >
+                    Forgot your password?
+                  </Link>
+                </div>
               </div>
 
               <div>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={(e) => {
+                    console.log("Sign in button clicked manually");
+                    if (!isLoading) {
+                      handleSubmit(e);
+                    }
+                  }}
                   disabled={isLoading}
-                  className="w-full flex justify-center items-center px-4 py-3 border border-transparent rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                  className="relative w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-4 px-4 rounded-md text-sm hover:from-blue-600 hover:to-indigo-700 transition-all duration-300 ease-in-out flex justify-center items-center gap-2"
                 >
                   {isLoading ? (
                     <>
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Signing in...
+                      <div className="animate-spin h-5 w-5 border-t-2 border-white rounded-full" />
+                      <span>Signing in...</span>
                     </>
                   ) : (
-                    <>
-                      <FiLogIn className="mr-2" />
-                      Sign in
-                    </>
+                    <span>Sign in</span>
                   )}
                 </button>
               </div>
