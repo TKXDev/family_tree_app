@@ -37,9 +37,29 @@ export async function PUT(req: NextRequest, { params }: Params) {
     await connectDB();
 
     console.log("Starting member update request for ID:", params.id);
+    console.log("Request headers:", Object.fromEntries(req.headers.entries()));
+    console.log(
+      "Request cookies:",
+      req.cookies
+        .getAll()
+        .map((c) => `${c.name}=${c.value.substring(0, 10)}...`)
+        .join(", ")
+    );
 
     // Verify admin role using the central auth service
     const { authenticated, user } = await verifyAuth(req);
+
+    console.log("Auth verification result:", {
+      authenticated,
+      user: user
+        ? {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+          }
+        : null,
+    });
 
     if (!authenticated) {
       console.log("Authentication failed: No valid token");

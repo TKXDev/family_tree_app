@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
@@ -38,6 +38,7 @@ import ReactFlow, {
   EdgeChange,
   OnNodesChange,
   OnEdgesChange,
+  ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import useSWR from "swr";
@@ -46,6 +47,8 @@ import { useTree } from "@/lib/hooks/useTree";
 import { useDynamicPageTitle } from "@/lib/hooks/usePageTitle";
 import Cookies from "js-cookie";
 import { isAdmin } from "@/lib/auth";
+import WarningDialog from "@/components/ui/WarningDialog";
+import Navbar from "@/components/ui/Navbar";
 
 interface FamilyMember {
   _id: string;
@@ -133,12 +136,13 @@ interface MemoizedTreeProps {
   edges: Edge[];
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
-  nodeTypes: any;
-  edgeTypes: any;
+  nodeTypes: Record<string, React.ComponentType<any>>;
+  edgeTypes: Record<string, React.ComponentType<any>>;
+  onInit: (instance: ReactFlowInstance) => void;
 }
 
 // Memoized Tree component to prevent unnecessary re-renders
-const MemoizedTree = React.memo(
+const MemoizedTree = memo(
   ({
     nodes,
     edges,
@@ -146,6 +150,7 @@ const MemoizedTree = React.memo(
     onEdgesChange,
     nodeTypes,
     edgeTypes,
+    onInit,
   }: MemoizedTreeProps) => {
     return (
       <ReactFlow
@@ -155,12 +160,11 @@ const MemoizedTree = React.memo(
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        onInit={onInit}
         fitView
         attributionPosition="bottom-right"
-        minZoom={0.1}
-        maxZoom={1.5}
       >
-        <Background color="#aaa" gap={16} />
+        <Background />
         <Controls />
         <Panel
           position="top-left"
@@ -211,6 +215,11 @@ const MemoizedTree = React.memo(
           </div>
         </Panel>
       </ReactFlow>
+    );
+  },
+  (prevProps, nextProps) => {
+    return (
+      prevProps.nodes === nextProps.nodes && prevProps.edges === nextProps.edges
     );
   }
 );
@@ -321,6 +330,11 @@ const FamilyTreePage = () => {
     fetchTree,
     exportTree,
   } = useTree();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reactFlowInstance, setReactFlowInstance] =
+    useState<ReactFlowInstance | null>(null);
 
   useEffect(() => {
     setIsBrowser(true);
@@ -492,7 +506,7 @@ const FamilyTreePage = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDelete(member._id);
+                        handleDeleteClick(member._id);
                       }}
                       className="p-1 text-red-500 hover:text-red-700 transition-colors"
                     >
@@ -676,75 +690,75 @@ const FamilyTreePage = () => {
   const refreshTree = useCallback(async () => {
     setIsRefreshing(true);
     try {
+      // Reset search query
+      setSearchQuery("");
+
+      // Reset highlighted member
+      setHighlightedMember(null);
+
+      // Reset selected member
+      setSelectedMemberId(null);
+
+      // Reset active tab to tree view
+      setActiveTab("tree");
+
+      // Reset any filters or sorting
+      // (Add any additional state resets here)
+
+      // Fetch fresh data from the server
       await mutate();
+
+      // Reset the flow view to initial position
+      if (reactFlowInstance) {
+        // Small delay to ensure the flow is rendered with new data
+        setTimeout(() => {
+          reactFlowInstance.fitView({ padding: 0.2 });
+        }, 100);
+      }
+
       toast.success("Family tree refreshed");
     } catch (err) {
+      console.error("Error refreshing tree:", err);
       toast.error("Failed to refresh family tree");
     } finally {
       setIsRefreshing(false);
     }
-  }, [mutate]);
+  }, [mutate, reactFlowInstance]);
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this family member?")) {
-      try {
-        console.log("Deleting member:", id);
-        console.log("Current user:", user);
+  const handleDeleteClick = (memberId: string) => {
+    setMemberToDelete(memberId);
+    setShowDeleteDialog(true);
+  };
 
-        // Get token from cookies
-        const token = Cookies.get("token");
+  const handleConfirmDelete = async () => {
+    if (!memberToDelete) return;
 
-        if (!token) {
-          console.error("No authentication token found");
-          toast.error("Authentication required. Please sign in again.");
-          return;
-        }
+    try {
+      setIsSubmitting(true);
+      const response = await fetch(`/api/members/${memberToDelete}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
 
-        console.log(
-          "Using token for deletion:",
-          token.substring(0, 10) + "..."
-        );
-
-        const response = await fetch(`/api/members/${id}`, {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          credentials: "include", // Ensure cookies are sent with the request
-        });
-
-        const responseData = await response.json();
-        console.log("Delete API response:", responseData);
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            toast.error("Authentication failed. Please sign in again.");
-            return;
-          }
-
-          if (response.status === 403) {
-            toast.error(
-              "You don't have permission to delete family members. Admin access required."
-            );
-            console.error("Admin access denied - user role:", user?.role);
-            return;
-          }
-
-          throw new Error(
-            responseData.error || "Failed to delete family member"
-          );
-        }
-
-        toast.success("Family member deleted successfully");
-        // Refresh data using SWR's mutate
-        await mutate();
-      } catch (err) {
-        console.error("Delete error:", err);
-        toast.error(
-          err instanceof Error ? err.message : "Failed to delete family member"
-        );
+      if (!response.ok) {
+        throw new Error("Failed to delete member");
       }
+
+      toast.success("Family member deleted successfully");
+      // Refresh the tree data
+      fetchTreeData();
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete member"
+      );
+    } finally {
+      setIsSubmitting(false);
+      setShowDeleteDialog(false);
+      setMemberToDelete(null);
     }
   };
 
@@ -847,6 +861,7 @@ const FamilyTreePage = () => {
             onEdgesChange={onEdgesChange}
             nodeTypes={memoizedNodeTypes}
             edgeTypes={memoizedEdgeTypes}
+            onInit={setReactFlowInstance}
           />
         </ReactFlowProvider>
       );
@@ -867,100 +882,89 @@ const FamilyTreePage = () => {
     isLoading,
     treeData,
     userIsAdmin,
+    setReactFlowInstance,
   ]);
+
+  const fetchTreeData = async () => {
+    try {
+      const response = await fetch("/api/family-tree");
+      if (!response.ok) {
+        throw new Error("Failed to fetch family tree data");
+      }
+      const data = await response.json();
+      setTreeData(data.data);
+    } catch (error) {
+      console.error("Error fetching tree data:", error);
+      toast.error("Failed to load family tree data");
+    }
+  };
 
   if (loading || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          style: {
-            borderRadius: "10px",
-            background: "#333",
-            color: "#fff",
-          },
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+      <Toaster position="top-right" />
+      <WarningDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false);
+          setMemberToDelete(null);
         }}
+        onConfirm={handleConfirmDelete}
+        title="Delete Family Member"
+        message="Are you sure you want to delete this family member? This action cannot be undone and will affect the entire family tree structure."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
       />
 
-      {/* Header */}
-      <div className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <Link
-                  href="/dashboard"
-                  className="flex items-center text-indigo-600 hover:text-indigo-800 transition-colors"
-                >
-                  <FiArrowLeft className="mr-2" />
-                  <span className="hidden sm:inline">Dashboard</span>
-                </Link>
-                <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
-                  Family Tree
-                </h1>
-              </div>
-              <div className="md:hidden">
-                {userIsAdmin && (
-                  <Link
-                    href="/dashboard/add-member"
-                    className="inline-flex items-center p-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                  >
-                    <FiPlus />
-                  </Link>
-                )}
-              </div>
-            </div>
+      <Navbar title="Family Tree" showBackButton={true}>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="w-full sm:w-64">
+            <SearchInput
+              value={searchQuery}
+              onChange={handleSearchChange}
+              onClear={clearSearch}
+            />
+          </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="w-full sm:w-64">
-                <SearchInput
-                  value={searchQuery}
-                  onChange={handleSearchChange}
-                  onClear={clearSearch}
-                />
-              </div>
+          <div className="flex gap-2">
+            <button
+              onClick={refreshTree}
+              disabled={isRefreshing || isLoading}
+              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-lg hover:from-emerald-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              {isRefreshing ? (
+                <span className="animate-spin mr-2">⭘</span>
+              ) : (
+                <FiRefreshCw className="mr-2" />
+              )}
+              Refresh
+            </button>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={refreshTree}
-                  disabled={isRefreshing || isLoading}
-                  className="flex items-center px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isRefreshing ? (
-                    <span className="animate-spin mr-2">⭘</span>
-                  ) : (
-                    <FiRefreshCw className="mr-2" />
-                  )}
-                  Refresh
-                </button>
-
-                {userIsAdmin && (
-                  <Link
-                    href="/dashboard/add-member"
-                    className="flex items-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    <FiPlus className="mr-2" />
-                    Add Member
-                  </Link>
-                )}
-              </div>
-            </div>
+            {userIsAdmin && (
+              <Link
+                href="/dashboard/add-member"
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-lg hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-sm hover:shadow-md transition-all duration-200"
+              >
+                <FiPlus className="mr-2" />
+                <span className="hidden sm:inline">Add Member</span>
+              </Link>
+            )}
           </div>
         </div>
-      </div>
+      </Navbar>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {error ? (
-          <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg shadow-sm">
+          <div className="bg-red-50/80 border-l-4 border-red-400 p-4 rounded-lg shadow-lg backdrop-blur-sm">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg
@@ -985,10 +989,10 @@ const FamilyTreePage = () => {
         ) : (
           <>
             {/* Tree Visualization */}
-            <div className="bg-white shadow-lg rounded-2xl overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-100 flex flex-wrap justify-between items-center gap-4">
+            <div className="bg-white/80 shadow-xl rounded-2xl overflow-hidden my-2 backdrop-blur-md border border-white/20">
+              <div className="px-6 py-5 border-b border-gray-100 flex flex-wrap justify-between items-center gap-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50">
                 <div>
-                  <h2 className="text-lg font-medium text-gray-900">
+                  <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
                     Family Tree Visualization
                   </h2>
                   <p className="text-sm text-gray-500">
@@ -996,68 +1000,49 @@ const FamilyTreePage = () => {
                   </p>
                 </div>
                 <div className="flex items-center space-x-2">
+                  {userIsAdmin && (
+                    <Link href="/dashboard/add-member">
+                      <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
+                        <FiPlus className="mr-2" />
+                        <span className="hidden sm:inline">Add Member</span>
+                      </button>
+                    </Link>
+                  )}
                   <button
                     onClick={refreshTree}
                     disabled={isRefreshing}
-                    className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-gray-50 rounded-full transition-colors"
-                    title="Refresh tree"
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white/80 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-md"
+                    title="Refresh family tree"
                   >
                     <FiRefreshCw
-                      className={isRefreshing ? "animate-spin" : ""}
+                      className={`mr-2 h-4 w-4 ${
+                        isRefreshing ? "animate-spin" : ""
+                      }`}
                     />
+                    {isRefreshing ? "Refreshing..." : "Refresh"}
                   </button>
                   <div className="relative group">
                     <button
                       disabled={isExporting}
-                      className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white/80 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-md"
                     >
                       <FiDownload className="mr-2 h-4 w-4" />
                       {isExporting ? "Exporting..." : "Export"}
                     </button>
-                    <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                      <div
-                        className="py-1"
-                        role="menu"
-                        aria-orientation="vertical"
-                      >
-                        <button
-                          onClick={() => handleExport("png")}
-                          disabled={isExporting}
-                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                          role="menuitem"
-                        >
-                          Export as PNG
-                        </button>
-                        <button
-                          onClick={() => handleExport("pdf")}
-                          disabled={isExporting}
-                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                          role="menuitem"
-                        >
-                          Export as PDF
-                        </button>
-                        <button
-                          onClick={() => handleExport("json")}
-                          disabled={isExporting}
-                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                          role="menuitem"
-                        >
-                          Export as JSON
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="h-[600px] w-full">{renderReactFlow()}</div>
+              <div className="h-[600px] w-full bg-gradient-to-br from-gray-50 to-gray-100/50">
+                {renderReactFlow()}
+              </div>
             </div>
 
             {/* Members List */}
-            <div className="bg-white shadow-lg rounded-2xl overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-100 flex flex-wrap justify-between items-center gap-4">
+            <div className="bg-white/80 shadow-xl rounded-2xl overflow-hidden my-2 backdrop-blur-md border border-white/20">
+              <div className="px-6 py-5 border-b border-gray-100 flex flex-wrap justify-between items-center gap-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900">
+                  <h3 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
                     Family Members
                   </h3>
                   <p className="text-sm text-gray-500">
@@ -1070,13 +1055,13 @@ const FamilyTreePage = () => {
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery("")}
-                      className="px-3 py-1 text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                      className="px-4 py-2 text-sm text-gray-600 bg-white/80 hover:bg-white rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
                     >
                       Clear search
                     </button>
                   )}
                   <button
-                    className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-gray-50 rounded-full transition-colors"
+                    className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-white/80 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
                     title="Filter options"
                   >
                     <FiFilter />
@@ -1088,7 +1073,7 @@ const FamilyTreePage = () => {
                 {/* Desktop Table View */}
                 <div className="hidden md:block">
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50/80">
                       <tr>
                         <th
                           scope="col"
@@ -1128,25 +1113,25 @@ const FamilyTreePage = () => {
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-white/80 divide-y divide-gray-200">
                       {filteredMembers?.length ? (
                         filteredMembers.map((member) => (
                           <tr
                             key={member._id}
-                            className="hover:bg-gray-50 transition-colors"
+                            className="hover:bg-white/80 transition-all duration-200"
                           >
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center">
-                                <div className="flex-shrink-0 h-10 w-10">
+                                <div className="flex-shrink-0 h-12 w-12">
                                   <ProfileImage
                                     photoUrl={member.photo_url}
                                     firstName={member.first_name}
                                     lastName={member.last_name}
-                                    size={10}
+                                    size={12}
                                   />
                                 </div>
                                 <div className="ml-4">
-                                  <div className="text-sm font-medium text-gray-900">
+                                  <div className="text-sm font-semibold text-gray-900">
                                     {member.first_name} {member.last_name}
                                   </div>
                                   <div className="text-sm text-gray-500 capitalize">
@@ -1171,7 +1156,7 @@ const FamilyTreePage = () => {
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                              <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800">
                                 Gen {member.generation}
                               </span>
                             </td>
@@ -1181,56 +1166,60 @@ const FamilyTreePage = () => {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {getChildrenNames(member.children_ids)}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                              <div className="flex space-x-3">
-                                {userIsAdmin && (
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {userIsAdmin && (
+                                <div className="flex items-center space-x-2">
                                   <Link
                                     href={`/dashboard/edit-member/${member._id}`}
-                                    className="text-indigo-600 hover:text-indigo-900 transition-colors"
-                                    title="Edit member"
+                                    className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200"
                                   >
-                                    <FiEdit className="h-5 w-5" />
+                                    <FiEdit className="h-4 w-4" />
                                   </Link>
-                                )}
-                                {userIsAdmin && (
                                   <button
-                                    onClick={() => handleDelete(member._id)}
-                                    className="text-red-500 hover:text-red-700 transition-colors"
-                                    title="Delete member"
+                                    onClick={() =>
+                                      handleDeleteClick(member._id)
+                                    }
+                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
                                   >
-                                    <FiTrash2 className="h-5 w-5" />
+                                    <FiTrash2 className="h-4 w-4" />
                                   </button>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={6} className="px-6 py-10 text-center">
-                            {searchQuery ? (
-                              <div className="text-gray-500">
-                                <p className="font-medium">No matches found</p>
-                                <p className="text-sm">
-                                  Try a different search term
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="text-gray-500">
-                                <p className="font-medium mb-2">
-                                  No family members found
-                                </p>
-                                {userIsAdmin && (
-                                  <Link
-                                    href="/dashboard/add-member"
-                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                                  >
-                                    <FiPlus className="mr-2" /> Add Your First
-                                    Member
-                                  </Link>
-                                )}
-                              </div>
-                            )}
+                          <td colSpan={6} className="px-6 py-4 text-center">
+                            <div className="text-gray-500">
+                              {searchQuery ? (
+                                <div>
+                                  <p className="font-medium">
+                                    No matches found
+                                  </p>
+                                  <p className="text-sm">
+                                    Try a different search term
+                                  </p>
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="font-medium mb-2">
+                                    No family members found
+                                  </p>
+                                  {userIsAdmin && (
+                                    <Link
+                                      href="/dashboard/add-member"
+                                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
+                                    >
+                                      <FiPlus className="mr-2" />
+                                      <span className="hidden sm:inline">
+                                        Add Member
+                                      </span>
+                                    </Link>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -1238,14 +1227,14 @@ const FamilyTreePage = () => {
                   </table>
                 </div>
 
-                {/* Mobile Card List View */}
+                {/* Mobile Card View */}
                 <div className="md:hidden">
                   {filteredMembers?.length ? (
-                    <div className="space-y-4">
+                    <div className="space-y-4 p-4">
                       {filteredMembers.map((member) => (
                         <div
                           key={member._id}
-                          className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                          className="bg-white/80 rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-200 backdrop-blur-sm"
                         >
                           <div className="p-4">
                             <div className="flex items-start justify-between">
@@ -1259,7 +1248,7 @@ const FamilyTreePage = () => {
                                   />
                                 </div>
                                 <div>
-                                  <h3 className="text-base font-medium text-gray-900">
+                                  <h3 className="text-base font-semibold text-gray-900">
                                     {member.first_name} {member.last_name}
                                   </h3>
                                   <div className="flex items-center space-x-2 mt-1">
@@ -1267,37 +1256,35 @@ const FamilyTreePage = () => {
                                       {member.gender}
                                     </span>
                                     <span className="text-gray-300">•</span>
-                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                    <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800">
                                       Gen {member.generation}
                                     </span>
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex space-x-2">
-                                {userIsAdmin && (
+                              {userIsAdmin && (
+                                <div className="flex items-center space-x-2">
                                   <Link
                                     href={`/dashboard/edit-member/${member._id}`}
-                                    className="p-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-full transition-colors"
-                                    title="Edit member"
+                                    className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200"
                                   >
-                                    <FiEdit className="h-5 w-5" />
+                                    <FiEdit className="h-4 w-4" />
                                   </Link>
-                                )}
-                                {userIsAdmin && (
                                   <button
-                                    onClick={() => handleDelete(member._id)}
-                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
-                                    title="Delete member"
+                                    onClick={() =>
+                                      handleDeleteClick(member._id)
+                                    }
+                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
                                   >
-                                    <FiTrash2 className="h-5 w-5" />
+                                    <FiTrash2 className="h-4 w-4" />
                                   </button>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
 
                             <div className="mt-4 space-y-2">
-                              <div className="flex items-center text-sm text-gray-600">
-                                <FiCalendar className="mr-2 h-4 w-4 text-gray-400" />
+                              <div className="flex items-center text-sm text-gray-600 bg-gray-50/50 px-3 py-2 rounded-lg">
+                                <FiCalendar className="mr-2 h-4 w-4 text-indigo-500" />
                                 <span>
                                   {new Date(
                                     member.birth_date
@@ -1309,14 +1296,14 @@ const FamilyTreePage = () => {
                                 </span>
                               </div>
                               {member.spouse_id && (
-                                <div className="flex items-center text-sm text-gray-600">
-                                  <FiHeart className="mr-2 h-4 w-4 text-pink-400" />
+                                <div className="flex items-center text-sm text-gray-600 bg-gray-50/50 px-3 py-2 rounded-lg">
+                                  <FiHeart className="mr-2 h-4 w-4 text-pink-500" />
                                   <span>{getSpouseName(member.spouse_id)}</span>
                                 </div>
                               )}
                               {member.children_ids.length > 0 && (
-                                <div className="flex items-center text-sm text-gray-600">
-                                  <FiUsers className="mr-2 h-4 w-4 text-indigo-400" />
+                                <div className="flex items-center text-sm text-gray-600 bg-gray-50/50 px-3 py-2 rounded-lg">
+                                  <FiUsers className="mr-2 h-4 w-4 text-indigo-500" />
                                   <span>
                                     {getChildrenNames(member.children_ids)}
                                   </span>
@@ -1342,9 +1329,12 @@ const FamilyTreePage = () => {
                           {userIsAdmin && (
                             <Link
                               href="/dashboard/add-member"
-                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
                             >
-                              <FiPlus className="mr-2" /> Add Your First Member
+                              <FiPlus className="mr-2" />
+                              <span className="hidden sm:inline">
+                                Add Member
+                              </span>
                             </Link>
                           )}
                         </div>

@@ -14,9 +14,11 @@ import {
   FiCalendar,
   FiX,
   FiAlertTriangle,
+  FiUsers,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import { formatShortDate } from "@/lib/utils/dateFormatters";
+import Navbar from "@/components/ui/Navbar";
 
 interface User {
   _id: string;
@@ -187,24 +189,16 @@ export default function AdminUsersPage() {
 
   if (loading || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          style: {
-            borderRadius: "10px",
-            background: "#333",
-            color: "#fff",
-          },
-        }}
-      />
+    <>
+      <Toaster position="top-right" />
+      <Navbar title="Manage Users" showBackButton={true} />
 
       {/* Promotion Confirmation Modal */}
       {showPromotionModal && (
@@ -348,298 +342,277 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/dashboard"
-              className="flex items-center text-indigo-600 hover:text-indigo-800 font-medium"
-            >
-              <FiArrowLeft className="mr-2" />
-              <span>Dashboard</span>
-            </Link>
-            <h1 className="text-xl font-bold text-gray-800">User Management</h1>
-            <div className="w-6"></div> {/* Spacer for alignment */}
-          </div>
-        </div>
-      </div>
-
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-lg font-medium text-gray-900">All Users</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage user roles and permissions
-            </p>
-          </div>
-
-          {users.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-gray-500">No users found</p>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-white/80 shadow-xl rounded-2xl overflow-hidden backdrop-blur-md border border-white/20">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+                    All Users
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Manage user roles and permissions
+                  </p>
+                </div>
+                <div className="mt-4 sm:mt-0">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center bg-white/50 px-3 py-1.5 rounded-full shadow-sm">
+                      <div className="h-3 w-3 rounded-full bg-purple-400 mr-2"></div>
+                      <span className="text-sm text-gray-600">Main Admin</span>
+                    </div>
+                    <div className="flex items-center bg-white/50 px-3 py-1.5 rounded-full shadow-sm">
+                      <div className="h-3 w-3 rounded-full bg-green-400 mr-2"></div>
+                      <span className="text-sm text-gray-600">Admin</span>
+                    </div>
+                    <div className="flex items-center bg-white/50 px-3 py-1.5 rounded-full shadow-sm">
+                      <div className="h-3 w-3 rounded-full bg-gray-400 mr-2"></div>
+                      <span className="text-sm text-gray-600">User</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Name
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Email
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Role
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Created At
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((userItem) => (
-                    <tr
-                      key={userItem._id}
-                      className={
-                        userItem._id === user?._id ? "bg-blue-50" : undefined
-                      }
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
+
+            {users.length === 0 ? (
+              <div className="p-12 text-center">
+                <div className="flex flex-col items-center">
+                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mb-4">
+                    <FiUsers className="h-8 w-8 text-indigo-600" />
+                  </div>
+                  <p className="text-gray-500 text-lg font-medium">
+                    No users found
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
+                {users.map((userItem) => (
+                  <div
+                    key={userItem._id}
+                    className={`bg-white/80 rounded-xl border ${
+                      userItem._id === user?._id
+                        ? "border-blue-200 bg-blue-50/50"
+                        : "border-gray-200"
+                    } shadow-sm hover:shadow-lg transition-all duration-200 backdrop-blur-md hover:scale-[1.02]`}
+                  >
+                    <div className="p-5">
+                      <div className="flex items-start justify-between">
                         <div className="flex items-center">
-                          <div className="h-10 w-10 flex-shrink-0 rounded-full bg-indigo-100 flex items-center justify-center">
+                          <div
+                            className={`h-12 w-12 rounded-full flex items-center justify-center ${
+                              userItem.role === "main_admin"
+                                ? "bg-gradient-to-br from-purple-100 to-purple-200"
+                                : userItem.role === "admin"
+                                ? "bg-gradient-to-br from-green-100 to-green-200"
+                                : "bg-gradient-to-br from-gray-100 to-gray-200"
+                            } shadow-sm`}
+                          >
                             {userItem.role === "admin" ? (
-                              <FiShield className="h-5 w-5 text-indigo-600" />
+                              <FiShield className="h-6 w-6 text-indigo-600" />
                             ) : (
-                              <FiUser className="h-5 w-5 text-indigo-600" />
+                              <FiUser className="h-6 w-6 text-indigo-600" />
                             )}
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
+                            <h3 className="text-base font-semibold text-gray-900">
                               {userItem.name}
-                              {userItem.role === "main_admin" && (
-                                <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                  Main Admin
+                            </h3>
+                            <div className="flex items-center mt-1">
+                              <span
+                                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                                  userItem.role === "main_admin"
+                                    ? "bg-purple-100 text-purple-800"
+                                    : userItem.role === "admin"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {userItem.role === "main_admin"
+                                  ? "Main Admin"
+                                  : userItem.role === "admin"
+                                  ? "Admin"
+                                  : "User"}
+                              </span>
+                              {userItem._id === user?._id && (
+                                <span className="ml-2 text-xs text-blue-600 font-medium">
+                                  (Current user)
                                 </span>
                               )}
                             </div>
                           </div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center text-sm text-gray-600">
-                          <FiMail className="mr-2 h-4 w-4" />
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center text-sm text-gray-600 bg-gray-50/50 px-3 py-2 rounded-lg">
+                          <FiMail className="mr-2 h-4 w-4 text-indigo-500" />
                           {userItem.email}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            userItem.role === "main_admin"
-                              ? "bg-purple-100 text-purple-800"
-                              : userItem.role === "admin"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {userItem.role === "main_admin"
-                            ? "Main Admin"
-                            : userItem.role === "admin"
-                            ? "Admin"
-                            : "User"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex items-center">
-                          <FiCalendar className="mr-2 h-4 w-4" />
-                          {formatShortDate(userItem.createdAt)}
+                        <div className="flex items-center text-sm text-gray-600 bg-gray-50/50 px-3 py-2 rounded-lg">
+                          <FiCalendar className="mr-2 h-4 w-4 text-indigo-500" />
+                          Joined {formatShortDate(userItem.createdAt)}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {userItem._id !== user?._id && (
-                          <div className="flex space-x-2">
-                            {userItem.role === "main_admin" ? (
-                              <span className="text-gray-400 cursor-not-allowed">
-                                Main Admin (Cannot Change)
-                              </span>
-                            ) : userItem.role === "admin" ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDemoteToUser(
-                                    userItem._id,
-                                    userItem.name
-                                  )
-                                }
-                                disabled={
-                                  updatingUsers[userItem._id] ||
-                                  userItem._id === user?._id
-                                }
-                                className={`inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded transition-colors ${
-                                  userItem._id === user?._id
-                                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                    : "text-yellow-600 bg-yellow-100 hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-                                }`}
-                              >
-                                {updatingUsers[userItem._id] ? (
-                                  <svg
-                                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-yellow-700"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <circle
-                                      className="opacity-25"
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                      className="opacity-75"
-                                      fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                  </svg>
-                                ) : (
-                                  <FiUserX className="mr-1" />
-                                )}
-                                Demote to User
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handlePromoteToAdmin(
-                                    userItem._id,
-                                    userItem.name
-                                  )
-                                }
-                                disabled={
-                                  updatingUsers[userItem._id] ||
-                                  !canPromoteToAdmin
-                                }
-                                className={`inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded transition-colors ${
-                                  !canPromoteToAdmin
-                                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                    : "text-green-600 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                                }`}
-                                title={
-                                  !canPromoteToAdmin
-                                    ? "Only the main administrator can promote users"
-                                    : ""
-                                }
-                              >
-                                {updatingUsers[userItem._id] ? (
-                                  <svg
-                                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-green-700"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <circle
-                                      className="opacity-25"
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                      className="opacity-75"
-                                      fill="currentColor"
-                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                  </svg>
-                                ) : (
-                                  <FiUserCheck className="mr-1" />
-                                )}
-                                Promote to Admin
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        {userItem._id === user?._id && (
-                          <span className="text-gray-400 text-xs">
-                            Current user
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                      </div>
 
-        {/* Token Generation Info */}
-        {tokenInfo && (
-          <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4 relative">
-            <button
-              onClick={() => setTokenInfo(null)}
-              className="absolute top-2 right-2 text-green-500 hover:text-green-700"
-              aria-label="Close"
-            >
-              <FiX />
-            </button>
-            <h3 className="text-lg font-medium text-green-800 flex items-center">
-              <FiShield className="mr-2" /> Admin Token Generated
-            </h3>
-            <p className="text-sm text-green-700 mt-1">
-              A new admin token has been generated for this user. The user will
-              automatically have admin access on their next login.
-            </p>
-            <div className="mt-3 p-3 bg-white rounded border border-green-200">
-              <div className="flex flex-col space-y-1">
-                <div className="text-xs text-gray-500">Token Preview:</div>
-                <div className="font-mono text-sm">{tokenInfo.preview}</div>
+                      {userItem._id !== user?._id && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          {userItem.role === "main_admin" ? (
+                            <span className="text-sm text-gray-400 italic">
+                              Main Admin (Cannot Change)
+                            </span>
+                          ) : userItem.role === "admin" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDemoteToUser(userItem._id, userItem.name)
+                              }
+                              disabled={updatingUsers[userItem._id]}
+                              className={`w-full inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-medium rounded-lg transition-all duration-200 ${
+                                updatingUsers[userItem._id]
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : "text-yellow-600 bg-yellow-50 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                              }`}
+                            >
+                              {updatingUsers[userItem._id] ? (
+                                <svg
+                                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-yellow-700"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  ></circle>
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                  ></path>
+                                </svg>
+                              ) : (
+                                <FiUserX className="mr-2" />
+                              )}
+                              Demote to User
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handlePromoteToAdmin(
+                                  userItem._id,
+                                  userItem.name
+                                )
+                              }
+                              disabled={
+                                updatingUsers[userItem._id] ||
+                                !canPromoteToAdmin
+                              }
+                              className={`w-full inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-medium rounded-lg transition-all duration-200 ${
+                                !canPromoteToAdmin
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : "text-green-600 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                              }`}
+                              title={
+                                !canPromoteToAdmin
+                                  ? "Only the main administrator can promote users"
+                                  : ""
+                              }
+                            >
+                              {updatingUsers[userItem._id] ? (
+                                <svg
+                                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-green-700"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  ></circle>
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                  ></path>
+                                </svg>
+                              ) : (
+                                <FiUserCheck className="mr-2" />
+                              )}
+                              Promote to Admin
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="flex flex-col space-y-1 mt-2">
-                <div className="text-xs text-gray-500">Expires:</div>
-                <div className="text-sm">
-                  {formatShortDate(tokenInfo.expires)}
+            )}
+          </div>
+
+          {/* Token Generation Info */}
+          {tokenInfo && (
+            <div className="mt-6 bg-white/80 border border-green-200 rounded-xl p-4 relative backdrop-blur-md shadow-lg">
+              <button
+                onClick={() => setTokenInfo(null)}
+                className="absolute top-2 right-2 text-green-500 hover:text-green-700 transition-colors"
+                aria-label="Close"
+              >
+                <FiX />
+              </button>
+              <h3 className="text-lg font-semibold text-green-800 flex items-center">
+                <FiShield className="mr-2" /> Admin Token Generated
+              </h3>
+              <p className="text-sm text-green-700 mt-1">
+                A new admin token has been generated for this user. The user
+                will automatically have admin access on their next login.
+              </p>
+              <div className="mt-3 p-3 bg-white/50 rounded-lg border border-green-200">
+                <div className="flex flex-col space-y-1">
+                  <div className="text-xs text-gray-500">Token Preview:</div>
+                  <div className="font-mono text-sm break-all bg-gray-50/50 p-2 rounded">
+                    {tokenInfo.preview}
+                  </div>
+                </div>
+                <div className="flex flex-col space-y-1 mt-2">
+                  <div className="text-xs text-gray-500">Expires:</div>
+                  <div className="text-sm font-medium">
+                    {formatShortDate(tokenInfo.expires)}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {isMainAdmin && (
-          <div className="mt-8 p-4 bg-indigo-50 rounded-lg flex items-center">
-            <FiShield className="mr-2 text-indigo-600" />
-            <div>
-              <h3 className="font-medium text-indigo-700">
-                Main Administrator
-              </h3>
-              <p className="text-sm text-indigo-600">
-                You are the main administrator of this system. Only you can
-                promote users to admin role.
-              </p>
+          {isMainAdmin && (
+            <div className="mt-8 p-4 bg-white/80 rounded-xl flex items-center backdrop-blur-md shadow-lg border border-indigo-100">
+              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mr-4">
+                <FiShield className="h-5 w-5 text-indigo-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-indigo-700">
+                  Main Administrator
+                </h3>
+                <p className="text-sm text-indigo-600">
+                  You are the main administrator of this system. Only you can
+                  promote users to admin role.
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
     const firstName = url.searchParams.get("firstName");
     const lastName = url.searchParams.get("lastName");
     const gender = url.searchParams.get("gender");
+    const page = parseInt(url.searchParams.get("page") || "1");
+    const limit = parseInt(url.searchParams.get("limit") || "10");
 
     // Build query object based on provided parameters
     const query: any = {};
@@ -32,13 +34,20 @@ export async function GET(req: NextRequest) {
       query.gender = gender;
     }
 
-    // Execute query
-    const members = await FamilyMember.find(query);
+    // Execute query with pagination
+    const members = await FamilyMember.find(query)
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const totalMembers = await FamilyMember.countDocuments(query);
 
     return NextResponse.json(
       {
         message: "Family members found",
         count: members.length,
+        total: totalMembers,
+        currentPage: page,
+        totalPages: Math.ceil(totalMembers / limit),
         data: members,
       },
       { status: 200 }

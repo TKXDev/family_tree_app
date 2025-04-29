@@ -26,6 +26,16 @@ import {
 } from "@/lib/auth";
 import { useSession, signOut } from "next-auth/react";
 import Cookies from "js-cookie";
+import { toast } from "react-hot-toast";
+
+interface Session {
+  id: string;
+  createdAt: string;
+  lastUsed: string;
+  expiresAt: string;
+  userAgent: string;
+  isCurrentSession: boolean;
+}
 
 interface AuthContextProps {
   user: User | null;
@@ -40,8 +50,8 @@ interface AuthContextProps {
     rememberMe?: boolean
   ) => Promise<User>;
   signOut: () => Promise<void>;
-  getSessions: () => Promise<any[]>;
-  sessions: any[];
+  getSessions: () => Promise<Session[]>;
+  sessions: Session[];
   sessionsLoading: boolean;
   terminateSession: (sessionId: string) => Promise<boolean>;
   terminateAllOtherSessions: () => Promise<boolean>;
@@ -86,6 +96,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Get NextAuth session
   const { data: session, status } = useSession();
+
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
+  // Get all active sessions for the current user
+  const getSessions = useCallback(async () => {
+    if (!user) return [];
+
+    try {
+      setSessionsLoading(true);
+      const response = await fetch("/api/auth/sessions");
+      if (!response.ok) throw new Error("Failed to fetch sessions");
+      const data = await response.json();
+      setSessions(data.sessions);
+      return data.sessions;
+    } catch (error) {
+      console.error("Failed to get sessions:", error);
+      toast.error("Failed to load sessions");
+      return [];
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [user]);
+
+  // Terminate a specific session
+  const terminateSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        const response = await fetch(`/api/auth/sessions?id=${sessionId}`, {
+          method: "DELETE",
+        });
+        if (!response.ok) throw new Error("Failed to terminate session");
+        toast.success("Session terminated successfully");
+        await getSessions(); // Refresh sessions list
+        return true;
+      } catch (error) {
+        console.error("Failed to terminate session:", error);
+        toast.error("Failed to terminate session");
+        return false;
+      }
+    },
+    [getSessions]
+  );
+
+  // Terminate all other sessions
+  const terminateAllOtherSessions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/sessions?all=true", {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Failed to terminate sessions");
+      toast.success("All other sessions terminated successfully");
+      await getSessions(); // Refresh sessions list
+      return true;
+    } catch (error) {
+      console.error("Failed to terminate sessions:", error);
+      toast.error("Failed to terminate sessions");
+      return false;
+    }
+  }, [getSessions]);
 
   // This function can be called to check and update authentication status
   const checkAndSetAuth = useCallback(async (): Promise<boolean> => {
@@ -270,17 +340,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
           const result = await signin(email, password, !!rememberMe);
           await checkAndSetAuth();
-          return result.user as User;
+          return {
+            _id: result.user._id,
+            name: result.user.name,
+            email: result.user.email,
+            role: result.user.role as "user" | "admin" | "main_admin",
+          };
         } catch (error) {
           throw error;
         }
       },
       signOut: handleLogout,
-      getSessions: async () => [],
-      sessions: [],
-      sessionsLoading: false,
-      terminateSession: async () => false,
-      terminateAllOtherSessions: async () => false,
+      getSessions,
+      sessions,
+      sessionsLoading,
+      terminateSession,
+      terminateAllOtherSessions,
       isAdmin: userIsAdmin,
       isMainAdmin: userIsMainAdmin,
       canManageMembers: userCanManageMembers,
@@ -299,6 +374,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       userIsMainAdmin,
       userCanManageMembers,
       userCanPromoteToAdmin,
+      getSessions,
+      sessions,
+      sessionsLoading,
+      terminateSession,
+      terminateAllOtherSessions,
     ]
   );
 

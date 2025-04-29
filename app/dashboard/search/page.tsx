@@ -81,6 +81,8 @@ const SearchPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Search and filter state
   const [firstName, setFirstName] = useState("");
@@ -121,6 +123,11 @@ const SearchPage = () => {
     }
   }, [loading, isLoggedIn, router]);
 
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    handleSearch();
+  };
+
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) {
       e.preventDefault();
@@ -137,6 +144,8 @@ const SearchPage = () => {
       if (lastName) params.append("lastName", lastName);
       if (generation) params.append("generation", generation);
       if (gender) params.append("gender", gender);
+      params.append("page", page.toString());
+      params.append("limit", "10");
 
       const response = await fetch(`/api/search?${params.toString()}`, {
         headers: {
@@ -150,6 +159,7 @@ const SearchPage = () => {
 
       const data = await response.json();
       setMembers(data.data);
+      setTotalPages(data.totalPages);
       setIsLoading(false);
 
       if (e) {
@@ -212,13 +222,13 @@ const SearchPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Link
-                href="/dashboard"
+              <button
+                onClick={() => router.back()}
                 className="flex items-center text-indigo-600 hover:text-indigo-800 transition-colors"
               >
                 <FiArrowLeft className="mr-2" />
-                <span className="hidden sm:inline">Dashboard</span>
-              </Link>
+                <span className="hidden sm:inline">Go Back</span>
+              </button>
               <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
                 Search Family
               </h1>
@@ -547,6 +557,27 @@ const SearchPage = () => {
               )}
             </>
           )}
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="flex justify-between items-center mt-4">
+          <button
+            onClick={() => handlePageChange(page - 1)}
+            disabled={page === 1}
+            className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => handlePageChange(page + 1)}
+            disabled={page === totalPages}
+            className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
+          >
+            Next
+          </button>
         </div>
       </div>
     </div>

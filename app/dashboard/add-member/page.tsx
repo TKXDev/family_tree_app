@@ -18,12 +18,16 @@ import {
   FiCheck,
   FiPlus,
   FiSearch,
+  FiHome,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import { uploadFile, validateFile, fileToDataUrl } from "@/lib/upload-helper";
 import Image from "next/image";
 import Cookies from "js-cookie";
 import { isAdmin } from "@/lib/auth";
+import GoBackButton from "@/components/ui/GoBackButton";
+import Navbar from "@/components/ui/Navbar";
+import WarningDialog from "@/components/ui/WarningDialog";
 
 interface FamilyMember {
   _id: string;
@@ -53,6 +57,7 @@ const AddMemberPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [existingMembers, setExistingMembers] = useState<FamilyMember[]>([]);
   const [activeSection, setActiveSection] = useState<string>("basic");
+  const sections = ["basic", "dates", "family", "photo"];
 
   // Form state
   const [formData, setFormData] = useState<MemberFormData>({
@@ -75,6 +80,8 @@ const AddMemberPage = () => {
   const [searchParent, setSearchParent] = useState("");
   const [showSpouseSelector, setShowSpouseSelector] = useState(false);
   const [searchSpouse, setSearchSpouse] = useState("");
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -161,18 +168,23 @@ const AddMemberPage = () => {
   };
 
   const validateForm = () => {
+    // Validate all sections before final submission
     const newErrors: Record<string, string> = {};
+    const errorMessages: string[] = [];
 
     if (!formData.first_name.trim()) {
       newErrors.first_name = "First name is required";
+      errorMessages.push("First name is required");
     }
 
     if (!formData.last_name.trim()) {
       newErrors.last_name = "Last name is required";
+      errorMessages.push("Last name is required");
     }
 
     if (!formData.birth_date) {
       newErrors.birth_date = "Birth date is required";
+      errorMessages.push("Birth date is required");
     }
 
     if (
@@ -180,13 +192,16 @@ const AddMemberPage = () => {
       new Date(formData.death_date) < new Date(formData.birth_date)
     ) {
       newErrors.death_date = "Death date cannot be before birth date";
+      errorMessages.push("Death date cannot be before birth date");
     }
 
     if (formData.generation < 1) {
       newErrors.generation = "Generation must be at least 1";
+      errorMessages.push("Generation must be at least 1");
     }
 
     setErrors(newErrors);
+    setValidationErrors(errorMessages);
     return Object.keys(newErrors).length === 0;
   };
 
@@ -216,8 +231,13 @@ const AddMemberPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Only proceed with submission if we're on the family section and the submit button was clicked
+    if (activeSection !== "family") {
+      return;
+    }
+
     if (!validateForm()) {
-      toast.error("Please fix the errors in the form");
+      setShowValidationDialog(true);
       return;
     }
 
@@ -438,6 +458,68 @@ const AddMemberPage = () => {
     });
   };
 
+  const handleNextSection = () => {
+    // Validate current section before proceeding
+    if (!validateCurrentSection()) {
+      return;
+    }
+
+    // Only navigate to next section, don't submit form
+    const currentIndex = sections.indexOf(activeSection);
+    if (currentIndex < sections.length - 1) {
+      setActiveSection(sections[currentIndex + 1]);
+    }
+  };
+
+  const handlePreviousSection = () => {
+    const currentIndex = sections.indexOf(activeSection);
+    if (currentIndex > 0) {
+      setActiveSection(sections[currentIndex - 1]);
+    }
+  };
+
+  const validateCurrentSection = () => {
+    const newErrors: Record<string, string> = {};
+
+    // Basic section validation
+    if (activeSection === "basic") {
+      if (!formData.first_name.trim()) {
+        newErrors.first_name = "First name is required";
+      }
+      if (!formData.last_name.trim()) {
+        newErrors.last_name = "Last name is required";
+      }
+      if (!formData.gender) {
+        newErrors.gender = "Gender is required";
+      }
+      if (formData.generation < 1) {
+        newErrors.generation = "Generation must be at least 1";
+      }
+    }
+
+    // Dates section validation
+    if (activeSection === "dates") {
+      if (!formData.birth_date) {
+        newErrors.birth_date = "Birth date is required";
+      }
+      if (
+        formData.death_date &&
+        new Date(formData.death_date) < new Date(formData.birth_date)
+      ) {
+        newErrors.death_date = "Death date cannot be before birth date";
+      }
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      toast.error("Please fill in all required fields");
+      return false;
+    }
+
+    return true;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -448,37 +530,33 @@ const AddMemberPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          style: {
-            borderRadius: "10px",
-            background: "#333",
-            color: "#fff",
-          },
-        }}
+      <Toaster position="top-right" />
+
+      <WarningDialog
+        isOpen={showValidationDialog}
+        onClose={() => setShowValidationDialog(false)}
+        onConfirm={() => setShowValidationDialog(false)}
+        title="Required Fields Missing"
+        message={
+          <div className="space-y-2">
+            <p>Please fill in the following required fields:</p>
+            <ul className="list-disc list-inside text-sm">
+              {validationErrors.map((error, index) => (
+                <li key={index} className="text-red-600">
+                  {error}
+                </li>
+              ))}
+            </ul>
+          </div>
+        }
+        confirmText="OK"
+        type="warning"
       />
 
-      {/* Header - Simplified for mobile */}
-      <div className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/dashboard/family-tree"
-              className="flex items-center text-indigo-600 hover:text-indigo-800 font-medium"
-            >
-              <FiArrowLeft className="mr-2" />
-            </Link>
-            <h1 className="text-lg md:text-xl font-bold text-gray-800">
-              Add Family Member
-            </h1>
-            <div className="w-6"></div> {/* Spacer for alignment */}
-          </div>
-        </div>
-      </div>
+      <Navbar title="Add Family Member" showBackButton={true} />
 
-      {/* Main Content - Card with smooth edges and shadow */}
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white shadow-lg rounded-2xl overflow-hidden">
           {/* Profile Photo Upload - Prominent at the top */}
           <div className="p-6 bg-gradient-to-r from-indigo-500 to-purple-600 flex flex-col items-center justify-center">
@@ -572,210 +650,210 @@ const AddMemberPage = () => {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit}>
-            <div className="px-6 py-5">
-              {/* Basic Info Section */}
-              {activeSection === "basic" && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {/* First Name */}
-                    <div>
-                      <label
-                        htmlFor="first_name"
-                        className="block text-sm font-medium text-gray-700 mb-1"
-                      >
-                        First Name *
-                      </label>
-                      <input
-                        type="text"
-                        name="first_name"
-                        id="first_name"
-                        value={formData.first_name}
-                        onChange={handleChange}
-                        placeholder="Enter first name"
-                        className={`block w-full px-4 py-3 bg-gray-50 border ${
-                          errors.first_name
-                            ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                            : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                        } rounded-lg shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none transition duration-150`}
-                      />
-                      {errors.first_name && (
-                        <p className="mt-1 text-sm text-red-600">
-                          {errors.first_name}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Last Name */}
-                    <div>
-                      <label
-                        htmlFor="last_name"
-                        className="block text-sm font-medium text-gray-700 mb-1"
-                      >
-                        Last Name *
-                      </label>
-                      <input
-                        type="text"
-                        name="last_name"
-                        id="last_name"
-                        value={formData.last_name}
-                        onChange={handleChange}
-                        placeholder="Enter last name"
-                        className={`block w-full px-4 py-3 bg-gray-50 border ${
-                          errors.last_name
-                            ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                            : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                        } rounded-lg shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none`}
-                      />
-                      {errors.last_name && (
-                        <p className="mt-1 text-sm text-red-600">
-                          {errors.last_name}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Gender */}
+          <div className="px-6 py-5">
+            {/* Basic Info Section */}
+            {activeSection === "basic" && (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* First Name */}
                   <div>
                     <label
-                      htmlFor="gender"
+                      htmlFor="first_name"
                       className="block text-sm font-medium text-gray-700 mb-1"
                     >
-                      Gender *
+                      First Name *
                     </label>
-                    <div className="flex space-x-4">
-                      {["male", "female", "other"].map((gender) => (
-                        <label
-                          key={gender}
-                          className={`flex-1 cursor-pointer flex items-center justify-center px-4 py-3 rounded-lg border ${
-                            formData.gender === gender
-                              ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                              : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
-                          } transition-colors duration-150`}
-                        >
-                          <input
-                            type="radio"
-                            name="gender"
-                            value={gender}
-                            checked={formData.gender === gender}
-                            onChange={handleChange}
-                            className="sr-only"
-                          />
-                          <span className="capitalize">{gender}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Generation */}
-                  <div>
-                    <label
-                      htmlFor="generation"
-                      className="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                      Generation *{" "}
-                      <span className="text-xs text-gray-500">
-                        (Family tree level)
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        name="generation"
-                        id="generation"
-                        min="1"
-                        value={formData.generation}
-                        onChange={handleChange}
-                        className={`block w-full px-4 py-3 bg-gray-50 border ${
-                          errors.generation
-                            ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                            : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                        } rounded-lg shadow-sm text-gray-900 focus:outline-none`}
-                      />
-                      {errors.generation && (
-                        <p className="mt-1 text-sm text-red-600">
-                          {errors.generation}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Dates Section */}
-              {activeSection === "dates" && (
-                <div className="space-y-5">
-                  {/* Birth Date */}
-                  <div>
-                    <label
-                      htmlFor="birth_date"
-                      className="block text-sm font-medium text-gray-700 mb-1"
-                    >
-                      Birth Date *
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <FiCalendar className="text-gray-400" />
-                      </div>
-                      <input
-                        type="date"
-                        name="birth_date"
-                        id="birth_date"
-                        value={formData.birth_date}
-                        onChange={handleChange}
-                        className={`block w-full pl-10 px-4 py-3 bg-gray-50 border ${
-                          errors.birth_date
-                            ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                            : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                        } rounded-lg shadow-sm text-gray-900 focus:outline-none`}
-                      />
-                    </div>
-                    {errors.birth_date && (
+                    <input
+                      type="text"
+                      name="first_name"
+                      id="first_name"
+                      value={formData.first_name}
+                      onChange={handleChange}
+                      placeholder="Enter first name"
+                      className={`block w-full px-4 py-3 bg-gray-50 border ${
+                        errors.first_name
+                          ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                      } rounded-lg shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none transition duration-150`}
+                    />
+                    {errors.first_name && (
                       <p className="mt-1 text-sm text-red-600">
-                        {errors.birth_date}
+                        {errors.first_name}
                       </p>
                     )}
                   </div>
 
-                  {/* Death Date */}
+                  {/* Last Name */}
                   <div>
                     <label
-                      htmlFor="death_date"
+                      htmlFor="last_name"
                       className="block text-sm font-medium text-gray-700 mb-1"
                     >
-                      Death Date{" "}
-                      <span className="text-xs text-gray-500">
-                        (if applicable)
-                      </span>
+                      Last Name *
                     </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <FiCalendar className="text-gray-400" />
-                      </div>
-                      <input
-                        type="date"
-                        name="death_date"
-                        id="death_date"
-                        value={formData.death_date || ""}
-                        onChange={handleChange}
-                        className={`block w-full pl-10 px-4 py-3 bg-gray-50 border ${
-                          errors.death_date
-                            ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                            : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                        } rounded-lg shadow-sm text-gray-900 focus:outline-none`}
-                      />
-                    </div>
-                    {errors.death_date && (
+                    <input
+                      type="text"
+                      name="last_name"
+                      id="last_name"
+                      value={formData.last_name}
+                      onChange={handleChange}
+                      placeholder="Enter last name"
+                      className={`block w-full px-4 py-3 bg-gray-50 border ${
+                        errors.last_name
+                          ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                      } rounded-lg shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none`}
+                    />
+                    {errors.last_name && (
                       <p className="mt-1 text-sm text-red-600">
-                        {errors.death_date}
+                        {errors.last_name}
                       </p>
                     )}
                   </div>
                 </div>
-              )}
 
-              {/* Family Relationships Section */}
-              {activeSection === "family" && (
+                {/* Gender */}
+                <div>
+                  <label
+                    htmlFor="gender"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Gender *
+                  </label>
+                  <div className="flex space-x-4">
+                    {["male", "female", "other"].map((gender) => (
+                      <label
+                        key={gender}
+                        className={`flex-1 cursor-pointer flex items-center justify-center px-4 py-3 rounded-lg border ${
+                          formData.gender === gender
+                            ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                            : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
+                        } transition-colors duration-150`}
+                      >
+                        <input
+                          type="radio"
+                          name="gender"
+                          value={gender}
+                          checked={formData.gender === gender}
+                          onChange={handleChange}
+                          className="sr-only"
+                        />
+                        <span className="capitalize">{gender}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Generation */}
+                <div>
+                  <label
+                    htmlFor="generation"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Generation *{" "}
+                    <span className="text-xs text-gray-500">
+                      (Family tree level)
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      name="generation"
+                      id="generation"
+                      min="1"
+                      value={formData.generation}
+                      onChange={handleChange}
+                      className={`block w-full px-4 py-3 bg-gray-50 border ${
+                        errors.generation
+                          ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                      } rounded-lg shadow-sm text-gray-900 focus:outline-none`}
+                    />
+                    {errors.generation && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {errors.generation}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Dates Section */}
+            {activeSection === "dates" && (
+              <div className="space-y-5">
+                {/* Birth Date */}
+                <div>
+                  <label
+                    htmlFor="birth_date"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Birth Date *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <FiCalendar className="text-gray-400" />
+                    </div>
+                    <input
+                      type="date"
+                      name="birth_date"
+                      id="birth_date"
+                      value={formData.birth_date}
+                      onChange={handleChange}
+                      className={`block w-full pl-10 px-4 py-3 bg-gray-50 border ${
+                        errors.birth_date
+                          ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                      } rounded-lg shadow-sm text-gray-900 focus:outline-none`}
+                    />
+                  </div>
+                  {errors.birth_date && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.birth_date}
+                    </p>
+                  )}
+                </div>
+
+                {/* Death Date */}
+                <div>
+                  <label
+                    htmlFor="death_date"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Death Date{" "}
+                    <span className="text-xs text-gray-500">
+                      (if applicable)
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <FiCalendar className="text-gray-400" />
+                    </div>
+                    <input
+                      type="date"
+                      name="death_date"
+                      id="death_date"
+                      value={formData.death_date || ""}
+                      onChange={handleChange}
+                      className={`block w-full pl-10 px-4 py-3 bg-gray-50 border ${
+                        errors.death_date
+                          ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                      } rounded-lg shadow-sm text-gray-900 focus:outline-none`}
+                    />
+                  </div>
+                  {errors.death_date && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.death_date}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Family Relationships Section */}
+            {activeSection === "family" && (
+              <form onSubmit={handleSubmit}>
                 <div className="space-y-5">
                   {/* Parents */}
                   <div>
@@ -896,37 +974,62 @@ const AddMemberPage = () => {
                     )}
                   </div>
                 </div>
-              )}
-            </div>
+                {/* Form Actions - Only visible in family section */}
+                <div className="mt-6 flex justify-end space-x-3">
+                  <Link
+                    href="/dashboard/family-tree"
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Cancel
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handlePreviousSection}
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    {isSubmitting ? "Saving..." : "Add Family Member"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
 
-            {/* Form Actions - Always visible */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-              <Link href="/dashboard/family-tree" className="w-full sm:w-auto">
-                <button
-                  type="button"
-                  className="w-full flex justify-center items-center px-5 py-3 border border-gray-300 shadow-sm rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+          {/* Navigation buttons for non-family sections */}
+          {activeSection !== "family" && (
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+              <div className="flex justify-end space-x-3">
+                <Link
+                  href="/dashboard/family-tree"
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
                   Cancel
-                </button>
-              </Link>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full sm:w-auto flex justify-center items-center px-5 py-3 border border-transparent shadow-sm rounded-lg text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin h-5 w-5 mr-2 border-t-2 border-b-2 border-white rounded-full"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <FiSave className="mr-2" /> Add Family Member
-                  </>
+                </Link>
+                {activeSection !== "basic" && (
+                  <button
+                    type="button"
+                    onClick={handlePreviousSection}
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Previous
+                  </button>
                 )}
-              </button>
+                <button
+                  type="button"
+                  onClick={handleNextSection}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Next
+                </button>
+              </div>
             </div>
-          </form>
+          )}
         </div>
       </div>
 

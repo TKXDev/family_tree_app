@@ -78,6 +78,8 @@ const handler = NextAuth({
       if (user) {
         token.userId = user.id;
         token.role = user.role;
+        token.name = user.name;
+        token.email = user.email;
       }
 
       // For Google sign-in, check if a user with the email exists
@@ -107,11 +109,11 @@ const handler = NextAuth({
       return token;
     },
     async session({ session, token }: { session: Session; token: JWT }) {
-      if (session.user && token.userId) {
+      if (session.user) {
         session.user.id = token.userId;
-      }
-      if (session.user && token.role) {
         session.user.role = token.role;
+        session.user.name = token.name;
+        session.user.email = token.email;
       }
       return session;
     },
@@ -150,4 +152,10 @@ const handler = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
 });
 
-export { handler as GET, handler as POST };
+export {
+  handler as GET,
+  handler as POST,
+  handler as PUT,
+  handler as DELETE,
+  handler as PATCH,
+};

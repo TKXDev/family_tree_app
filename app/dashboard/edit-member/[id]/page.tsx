@@ -25,14 +25,30 @@ import Image from "next/image";
 import Cookies from "js-cookie";
 import { isAdmin } from "@/lib/auth";
 import { formatISODate } from "@/lib/utils/dateFormatters";
+import WarningDialog from "@/components/ui/WarningDialog";
+import GoBackButton from "@/components/ui/GoBackButton";
+import Navbar from "@/components/ui/Navbar";
 
 interface FamilyMember {
-  _id: string;
+  id?: string;
   first_name: string;
   last_name: string;
   birth_date: string;
+  death_date?: string;
   gender: string;
   generation: number;
+  photo_url: string;
+  bio: string;
+  father_id: string;
+  mother_id: string;
+  spouse_id: string;
+  children_ids: string[];
+  siblings_ids: string[];
+  occupation: string;
+  education: string;
+  location: string;
+  notes: string;
+  parent_ids?: string[];
 }
 
 interface MemberFormData {
@@ -45,6 +61,15 @@ interface MemberFormData {
   parent_ids: string[];
   spouse_id?: string;
   photo_url?: string;
+  bio: string;
+  father_id: string;
+  mother_id: string;
+  children_ids: string[];
+  siblings_ids: string[];
+  occupation: string;
+  education: string;
+  location: string;
+  notes: string;
 }
 
 interface PageProps {
@@ -56,7 +81,9 @@ interface PageProps {
 const EditMemberPage = ({ params }: PageProps) => {
   const router = useRouter();
   const routeParams = useParams();
-  const { user, loading, isLoggedIn } = useAuth();
+  const { user, loading, isLoggedIn, checkAndSetAuth } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [existingMembers, setExistingMembers] = useState<FamilyMember[]>([]);
@@ -64,16 +91,25 @@ const EditMemberPage = ({ params }: PageProps) => {
   const [activeTab, setActiveTab] = useState<string>("basic");
 
   // Form state
-  const [formData, setFormData] = useState<MemberFormData>({
+  const [formData, setFormData] = useState<FamilyMember>({
     first_name: "",
     last_name: "",
     birth_date: "",
     death_date: "",
     gender: "male",
     generation: 1,
-    parent_ids: [] as string[],
+    parent_ids: [],
     spouse_id: "",
     photo_url: "",
+    bio: "",
+    father_id: "",
+    mother_id: "",
+    children_ids: [],
+    siblings_ids: [],
+    occupation: "",
+    education: "",
+    location: "",
+    notes: "",
   });
 
   // Add dynamic page title
@@ -94,6 +130,12 @@ const EditMemberPage = ({ params }: PageProps) => {
   const [searchParent, setSearchParent] = useState("");
   const [showSpouseSelector, setShowSpouseSelector] = useState(false);
   const [searchSpouse, setSearchSpouse] = useState("");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"delete" | "save" | null>(
+    null
+  );
+  const [showWarningDialog, setShowWarningDialog] = useState(false);
 
   // Get the ID from route params, which is safer
   const memberId =
@@ -189,6 +231,15 @@ const EditMemberPage = ({ params }: PageProps) => {
             parent_ids: memberData.data.parent_ids || [],
             spouse_id: memberData.data.spouse_id || "",
             photo_url: memberData.data.photo_url || "",
+            bio: memberData.data.bio || "",
+            father_id: memberData.data.father_id || "",
+            mother_id: memberData.data.mother_id || "",
+            children_ids: memberData.data.children_ids || [],
+            siblings_ids: memberData.data.siblings_ids || [],
+            occupation: memberData.data.occupation || "",
+            education: memberData.data.education || "",
+            location: memberData.data.location || "",
+            notes: memberData.data.notes || "",
           });
 
           // Set preview URL if photo_url exists
@@ -300,6 +351,34 @@ const EditMemberPage = ({ params }: PageProps) => {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      setIsSubmitting(true);
+      const response = await fetch(`/api/members/${memberId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete member");
+      }
+
+      toast.success("Family member deleted successfully");
+      router.push("/dashboard/family-tree");
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete member"
+      );
+    } finally {
+      setIsSubmitting(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -308,88 +387,118 @@ const EditMemberPage = ({ params }: PageProps) => {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
+    // Check authentication state before proceeding
+    if (!isLoggedIn || !user) {
+      toast.error("Please log in again");
+      router.push("/signin");
+      return;
+    }
 
-      // Upload image if selected
-      let photoUrl = formData.photo_url;
-      if (selectedFile) {
-        try {
-          setIsUploading(true);
-          photoUrl = await uploadFile(selectedFile);
-          setIsUploading(false);
-        } catch (error) {
-          console.error("Upload failed, using fallback:", error);
-          toast.error("Failed to upload image. Using a default image instead.");
-          // Use a fallback image if upload fails
-          photoUrl =
-            process.env.NEXT_PUBLIC_DEFAULT_PROFILE_IMAGE ||
-            "https://res.cloudinary.com/dvl67fbkh/image/upload/v1711978823/samples/people/boy-snow-hoodie.jpg";
+    // Show warning dialog for significant changes
+    setShowSaveDialog(true);
+    setPendingAction("save");
+  };
+
+  const handleConfirmAction = async () => {
+    if (pendingAction === "delete") {
+      await handleDelete();
+    } else if (pendingAction === "save") {
+      try {
+        setIsSubmitting(true);
+
+        // Upload image if selected
+        let photoUrl = formData.photo_url;
+        if (selectedFile) {
+          try {
+            setIsUploading(true);
+            photoUrl = await uploadFile(selectedFile);
+            setIsUploading(false);
+          } catch (error) {
+            console.error("Upload failed, using fallback:", error);
+            toast.error(
+              "Failed to upload image. Using a default image instead."
+            );
+            photoUrl =
+              process.env.NEXT_PUBLIC_DEFAULT_PROFILE_IMAGE ||
+              "https://res.cloudinary.com/dvl67fbkh/image/upload/v1711978823/samples/people/boy-snow-hoodie.jpg";
+          }
         }
-      }
 
-      // Prepare data for submission
-      const submitData: Partial<MemberFormData> = {
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        birth_date: formData.birth_date,
-        gender: formData.gender,
-        generation: formData.generation,
-        parent_ids: formData.parent_ids,
-      };
+        // Prepare data for submission
+        const submitData: Partial<FamilyMember> = {
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          birth_date: formData.birth_date,
+          death_date: formData.death_date,
+          gender: formData.gender,
+          generation: formData.generation,
+          parent_ids: formData.parent_ids,
+          spouse_id: formData.spouse_id,
+          photo_url: photoUrl,
+          bio: formData.bio,
+          father_id: formData.father_id,
+          mother_id: formData.mother_id,
+          children_ids: formData.children_ids,
+          siblings_ids: formData.siblings_ids,
+          occupation: formData.occupation,
+          education: formData.education,
+          location: formData.location,
+          notes: formData.notes,
+        };
 
-      // Only add optional fields if they have values
-      if (formData.death_date) submitData.death_date = formData.death_date;
-      if (formData.spouse_id) submitData.spouse_id = formData.spouse_id;
-      if (photoUrl) submitData.photo_url = photoUrl;
+        // Make the API request with explicit headers
+        const response = await fetch(`/api/members/${memberId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+          },
+          credentials: "include",
+          body: JSON.stringify(submitData),
+        });
 
-      console.log("Submitting updated member data:", submitData);
-      console.log("Current user:", user);
+        // Check response status for authentication errors
+        if (response.status === 401) {
+          // Try to refresh the auth state
+          const authCheck = await checkAndSetAuth();
+          if (!authCheck) {
+            throw new Error("Unauthorized - Please log in again");
+          }
+          // If auth was refreshed, retry the request
+          return handleSubmit(new Event("submit") as any);
+        }
 
-      // Make the API request
-      const response = await fetch(`/api/members/${memberId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", // This ensures cookies are sent with the request
-        body: JSON.stringify(submitData),
-      });
+        if (response.status === 403) {
+          throw new Error(
+            "Forbidden - You don't have permission to edit members"
+          );
+        }
 
-      // Check response status for authentication errors
-      if (response.status === 401) {
-        throw new Error("Unauthorized - Please log in again");
-      }
+        const responseData = await response.json();
+        console.log("Update API response:", responseData);
 
-      if (response.status === 403) {
-        throw new Error(
-          "Forbidden - You don't have permission to edit members"
+        if (!response.ok) {
+          throw new Error(
+            responseData.error || "Failed to update family member"
+          );
+        }
+
+        toast.success("Family member updated successfully");
+        router.push("/dashboard/family-tree");
+      } catch (err) {
+        console.error(err);
+        toast.error(
+          err instanceof Error ? err.message : "Failed to update family member"
         );
+
+        // If it was an authentication error, redirect to login
+        if (err instanceof Error && err.message.includes("Unauthorized")) {
+          router.push("/signin");
+        }
+      } finally {
+        setIsSubmitting(false);
+        setShowSaveDialog(false);
       }
-
-      const responseData = await response.json();
-      console.log("Update API response:", responseData);
-
-      if (!response.ok) {
-        throw new Error(responseData.error || "Failed to update family member");
-      }
-
-      toast.success("Family member updated successfully");
-
-      // Redirect to family tree page
-      router.push("/dashboard/family-tree");
-    } catch (err) {
-      console.error(err);
-      toast.error(
-        err instanceof Error ? err.message : "Failed to update family member"
-      );
-
-      // If it was an authentication error, redirect to login
-      if (err instanceof Error && err.message.includes("Unauthorized")) {
-        router.push("/signin");
-      }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -421,6 +530,34 @@ const EditMemberPage = ({ params }: PageProps) => {
         parent_ids: newParentIds,
       };
     });
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSubmitting(true);
+      const response = await fetch(`/api/members/${params.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update member");
+      }
+
+      toast.success("Family member updated successfully");
+      router.push("/dashboard/family-tree");
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update member"
+      );
+    } finally {
+      setIsSubmitting(false);
+      setShowWarningDialog(false);
+    }
   };
 
   if (loading || isFetching) {
@@ -471,25 +608,18 @@ const EditMemberPage = ({ params }: PageProps) => {
         }}
       />
 
-      {/* Header */}
-      <div className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/dashboard/family-tree"
-                className="flex items-center text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
-                <FiArrowLeft className="mr-2" />
-                <span className="hidden sm:inline">Family Tree</span>
-              </Link>
-              <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
-                Edit {formData.first_name}
-              </h1>
-            </div>
-          </div>
-        </div>
-      </div>
+      <WarningDialog
+        isOpen={showWarningDialog}
+        onClose={() => setShowWarningDialog(false)}
+        onConfirm={handleSave}
+        title="Save Changes"
+        message="Are you sure you want to save these changes?"
+        confirmText="Save"
+        cancelText="Cancel"
+        type="warning"
+      />
+
+      <Navbar title="Edit Family Member" showBackButton={true} />
 
       {/* Main Content */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -1274,6 +1404,29 @@ const EditMemberPage = ({ params }: PageProps) => {
           </div>
         </div>
       )}
+
+      {/* Add Warning Dialogs */}
+      <WarningDialog
+        isOpen={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleConfirmAction}
+        title="Delete Family Member"
+        message="Are you sure you want to delete this family member? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
+
+      <WarningDialog
+        isOpen={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        onConfirm={handleConfirmAction}
+        title="Save Changes"
+        message="Are you sure you want to save these changes? This will update the family member's information."
+        confirmText="Save"
+        cancelText="Cancel"
+        type="warning"
+      />
     </div>
   );
 };

@@ -2,11 +2,19 @@
 
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { FiUsers, FiSettings, FiShield, FiArrowLeft } from "react-icons/fi";
+import {
+  FiUsers,
+  FiSettings,
+  FiShield,
+  FiArrowLeft,
+  FiHome,
+  FiLogOut,
+} from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 import { isAdmin } from "@/lib/auth";
+import Navbar from "@/components/ui/Navbar";
 
 const AdminPage = () => {
   const router = useRouter();
@@ -16,15 +24,18 @@ const AdminPage = () => {
     // Redirect to login if not authenticated
     if (!loading && !isLoggedIn) {
       router.push("/signin");
+      return;
     }
 
     // Redirect to dashboard if not an admin
     if (!loading && isLoggedIn && !isAdmin(user)) {
       toast.error("You don't have access to the admin panel");
       router.push("/dashboard");
+      return;
     }
   }, [loading, isLoggedIn, router, user]);
 
+  // Show loading spinner while checking auth
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -33,54 +44,23 @@ const AdminPage = () => {
     );
   }
 
-  // Only render content if user is an admin
-  if (user.role !== "admin") {
-    return null; // This prevents content flash before redirect happens
+  // Don't render content if not an admin (will redirect)
+  if (!isAdmin(user)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-600">Redirecting...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Toaster position="top-center" />
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+      <Toaster position="top-right" />
 
-      {/* Navbar */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-indigo-600">
-                Family Tree Admin
-              </h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-gray-700">
-                    {user?.name}
-                  </span>
-                  <span className="text-xs font-medium text-indigo-600">
-                    {user?.role}
-                  </span>
-                </div>
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white">
-                    {user?.name?.charAt(0).toUpperCase()}
-                  </div>
-                </div>
-              </div>
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                <FiArrowLeft className="mr-2" />
-                <span className="hidden sm:inline">Back to Dashboard</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar title="Admin Dashboard" showBackButton={true} />
 
       {/* Main Content */}
-      <div className="py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-semibold text-gray-900">
             Admin Dashboard
@@ -128,7 +108,7 @@ const AdminPage = () => {
                 <div className="bg-gray-50 px-5 py-3">
                   <div className="text-sm">
                     <a
-                      href="#"
+                      href="/dashboard/admin/users"
                       className="font-medium text-indigo-600 hover:text-indigo-500"
                     >
                       View all users

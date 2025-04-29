@@ -17,24 +17,38 @@ export async function verifyAuth(req: NextRequest) {
     // Log the request path for debugging
     console.log("Verifying authentication for path:", req.nextUrl.pathname);
 
-    // First try to extract JWT token from request
-    const token = extractToken(req);
-
-    // Check for NextAuth session token in parallel
+    // Check for NextAuth session token first
     const nextAuthToken = await getToken({
       req,
       secret: NEXTAUTH_SECRET,
     });
 
+    console.log(
+      "NextAuth token check result:",
+      nextAuthToken ? "Token found" : "No token"
+    );
+
     // If NextAuth token exists, user is authenticated through NextAuth
     if (nextAuthToken) {
       const role = (nextAuthToken as any).role || "user";
       console.log("NextAuth token verified, user role:", role);
+      console.log("NextAuth token details:", {
+        sub: nextAuthToken.sub,
+        name: nextAuthToken.name,
+        email: nextAuthToken.email,
+        role: role,
+        userId: nextAuthToken.userId,
+      });
+
+      if (!nextAuthToken.userId) {
+        console.log("No userId in NextAuth token");
+        return { authenticated: false, user: null };
+      }
 
       return {
         authenticated: true,
         user: {
-          _id: nextAuthToken.sub as string,
+          _id: nextAuthToken.userId,
           name: nextAuthToken.name as string,
           email: nextAuthToken.email as string,
           role: role,
@@ -42,13 +56,19 @@ export async function verifyAuth(req: NextRequest) {
       };
     }
 
-    // If custom token exists, verify it
+    // If no NextAuth token, try custom JWT token
+    const token = extractToken(req);
+    console.log(
+      "Custom token check result:",
+      token ? "Token found" : "No token"
+    );
+
     if (token) {
       try {
         // Verify the token signature and expiration
         const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
-
         console.log("JWT token verified successfully");
+        console.log("JWT token details:", payload);
 
         return {
           authenticated: true,
@@ -61,7 +81,6 @@ export async function verifyAuth(req: NextRequest) {
         };
       } catch (jwtError) {
         console.error("JWT verification failed:", jwtError);
-        // If token verification fails (expired or invalid), return not authenticated
         return { authenticated: false, user: null };
       }
     }
@@ -78,12 +97,10 @@ export async function verifyAuth(req: NextRequest) {
 // Helper function to extract token from request
 function extractToken(req: NextRequest): string | null {
   // Log available cookies for debugging
+  const cookies = req.cookies.getAll();
   console.log(
     "Available cookies:",
-    req.cookies
-      .getAll()
-      .map((c) => c.name)
-      .join(", ")
+    cookies.map((c) => `${c.name}=${c.value.substring(0, 10)}...`).join(", ")
   );
 
   // Try different token cookies with priority
