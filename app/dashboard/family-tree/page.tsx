@@ -22,6 +22,13 @@ import {
   FiHeart,
   FiUsers,
   FiX,
+  FiChevronDown,
+  FiChevronUp,
+  FiUser,
+  FiClock,
+  FiHash,
+  FiMinus,
+  FiPlus as FiPlusIcon,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 import ReactFlow, {
@@ -323,6 +330,15 @@ const FamilyTreePage = () => {
     null
   );
   const [flowRenderError, setFlowRenderError] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    generation: "",
+    gender: "",
+    minAge: "",
+    maxAge: "",
+    hasSpouse: "",
+    hasChildren: "",
+  });
   const {
     tree,
     loading: treeLoading,
@@ -340,15 +356,71 @@ const FamilyTreePage = () => {
     setIsBrowser(true);
   }, []);
 
-  // Filter members based on search query - memoized to avoid recalculation
+  // Filter members based on search query and filters - memoized to avoid recalculation
   const filteredMembers = useMemo(() => {
-    if (!searchQuery || !treeData?.members) return treeData?.members;
+    if (!treeData?.members) return [];
 
     return treeData.members.filter((member) => {
+      // Text search filter
       const fullName = `${member.first_name} ${member.last_name}`.toLowerCase();
-      return fullName.includes(searchQuery.toLowerCase());
+      const matchesSearch =
+        !searchQuery || fullName.includes(searchQuery.toLowerCase());
+
+      // Generation filter
+      const matchesGeneration =
+        !filters.generation ||
+        member.generation.toString() === filters.generation;
+
+      // Gender filter
+      const matchesGender = !filters.gender || member.gender === filters.gender;
+
+      // Age filter
+      const birthDate = new Date(member.birth_date);
+      const age = new Date().getFullYear() - birthDate.getFullYear();
+      const matchesMinAge = !filters.minAge || age >= parseInt(filters.minAge);
+      const matchesMaxAge = !filters.maxAge || age <= parseInt(filters.maxAge);
+
+      // Spouse filter
+      const matchesSpouse =
+        !filters.hasSpouse ||
+        (filters.hasSpouse === "yes" && member.spouse_id) ||
+        (filters.hasSpouse === "no" && !member.spouse_id);
+
+      // Children filter
+      const matchesChildren =
+        !filters.hasChildren ||
+        (filters.hasChildren === "yes" && member.children_ids.length > 0) ||
+        (filters.hasChildren === "no" && member.children_ids.length === 0);
+
+      return (
+        matchesSearch &&
+        matchesGeneration &&
+        matchesGender &&
+        matchesMinAge &&
+        matchesMaxAge &&
+        matchesSpouse &&
+        matchesChildren
+      );
     });
-  }, [searchQuery, treeData?.members]);
+  }, [searchQuery, treeData?.members, filters]);
+
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      generation: "",
+      gender: "",
+      minAge: "",
+      maxAge: "",
+      hasSpouse: "",
+      hasChildren: "",
+    });
+  };
 
   // Use the custom hook for dynamic page title
   useDynamicPageTitle({
@@ -450,16 +522,16 @@ const FamilyTreePage = () => {
     (data: TreeData) => {
       if (!data || !data.members) return { nodes: [], edges: [] };
 
-      // Create nodes from family members
-      const flowNodes = data.members.map((member) => {
+      // Use the same filtered members as the table view
+      const flowNodes = filteredMembers.map((member) => {
         // Calculate X position based on generation gaps
         const generations = [
-          ...new Set(data.members.map((m) => m.generation)),
+          ...new Set(filteredMembers.map((m) => m.generation)),
         ].sort();
         const xPosition = (generations.indexOf(member.generation) + 1) * 300;
 
         // Calculate Y position to spread members within the same generation
-        const sameGenMembers = data.members.filter(
+        const sameGenMembers = filteredMembers.filter(
           (m) => m.generation === member.generation
         );
         const yIndex = sameGenMembers.findIndex((m) => m._id === member._id);
@@ -522,7 +594,7 @@ const FamilyTreePage = () => {
         };
       });
 
-      // Create parent-child edges
+      // Create edges only between filtered members
       const flowEdges: Array<{
         id: string;
         source: string;
@@ -535,48 +607,54 @@ const FamilyTreePage = () => {
       }> = [];
 
       // Parent-child relationships
-      data.members.forEach((member) => {
+      filteredMembers.forEach((member) => {
         if (member.parent_ids && member.parent_ids.length > 0) {
           member.parent_ids.forEach((parentId) => {
-            flowEdges.push({
-              id: `p-${parentId}-${member._id}`,
-              source: parentId,
-              target: member._id,
-              type: "smoothstep",
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                width: 15,
-                height: 15,
-              },
-              style: { stroke: "#6b7280" },
-              animated: false,
-              label: "parent",
-            });
+            // Only create edge if parent is also in filtered members
+            if (filteredMembers.some((m) => m._id === parentId)) {
+              flowEdges.push({
+                id: `p-${parentId}-${member._id}`,
+                source: parentId,
+                target: member._id,
+                type: "smoothstep",
+                markerEnd: {
+                  type: MarkerType.ArrowClosed,
+                  width: 15,
+                  height: 15,
+                },
+                style: { stroke: "#6b7280" },
+                animated: false,
+                label: "parent",
+              });
+            }
           });
         }
       });
 
       // Spouse relationships
-      data.members.forEach((member) => {
+      filteredMembers.forEach((member) => {
         if (member.spouse_id) {
-          // Only add one edge per spouse pair (to avoid duplicates)
-          if (member._id < member.spouse_id) {
-            flowEdges.push({
-              id: `s-${member._id}-${member.spouse_id}`,
-              source: member._id,
-              target: member.spouse_id,
-              type: "straight",
-              style: { stroke: "#ef4444", strokeDasharray: "5,5" },
-              animated: true,
-              label: "spouse",
-            });
+          // Only create edge if spouse is also in filtered members
+          if (filteredMembers.some((m) => m._id === member.spouse_id)) {
+            // Only add one edge per spouse pair (to avoid duplicates)
+            if (member._id < member.spouse_id) {
+              flowEdges.push({
+                id: `s-${member._id}-${member.spouse_id}`,
+                source: member._id,
+                target: member.spouse_id,
+                type: "straight",
+                style: { stroke: "#ef4444", strokeDasharray: "5,5" },
+                animated: true,
+                label: "spouse",
+              });
+            }
           }
         }
       });
 
       return { nodes: flowNodes, edges: flowEdges };
     },
-    [highlightedMember, getNodeStyle, userIsAdmin]
+    [highlightedMember, getNodeStyle, userIsAdmin, filteredMembers]
   );
 
   // Memoize the transformed data to prevent unnecessary recalculations
@@ -925,44 +1003,282 @@ const FamilyTreePage = () => {
       />
 
       <Navbar title="Family Tree" showBackButton={true}>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="w-full sm:w-64">
-            <SearchInput
-              value={searchQuery}
-              onChange={handleSearchChange}
-              onClear={clearSearch}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={refreshTree}
-              disabled={isRefreshing || isLoading}
-              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-lg hover:from-emerald-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transition-all duration-200"
-            >
-              {isRefreshing ? (
-                <span className="animate-spin mr-2">⭘</span>
-              ) : (
-                <FiRefreshCw className="mr-2" />
-              )}
-              Refresh
-            </button>
-
-            {userIsAdmin && (
-              <Link
-                href="/dashboard/add-member"
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-lg hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-sm hover:shadow-md transition-all duration-200"
-              >
-                <FiPlus className="mr-2" />
-                <span className="hidden sm:inline">Add Member</span>
-              </Link>
+        <div className="flex gap-2">
+          <button
+            onClick={refreshTree}
+            disabled={isRefreshing || isLoading}
+            className="hidden sm:flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-lg hover:from-emerald-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transition-all duration-200"
+          >
+            {isRefreshing ? (
+              <span className="animate-spin mr-2">⭘</span>
+            ) : (
+              <FiRefreshCw className="mr-2" />
             )}
-          </div>
+            Refresh
+          </button>
+
+          {userIsAdmin && (
+            <Link
+              href="/dashboard/add-member"
+              className="hidden sm:inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-lg hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              <FiPlus className="mr-2" />
+              <span className="hidden sm:inline">Add Member</span>
+            </Link>
+          )}
         </div>
       </Navbar>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Search Section */}
+        <div className="mb-6">
+          <div className="w-full max-w-2xl mx-auto">
+            <div className="flex flex-col gap-4">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <SearchInput
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    onClear={clearSearch}
+                  />
+                </div>
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-white/80 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="Filter options"
+                >
+                  <FiFilter />
+                </button>
+              </div>
+
+              {/* Filter Panel */}
+              {showFilters && (
+                <>
+                  {/* Backdrop */}
+                  <div
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+                    onClick={() => setShowFilters(false)}
+                  />
+
+                  {/* Filter Dialog */}
+                  <div className="fixed inset-0 sm:inset-x-4 sm:top-20 sm:bottom-auto md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:max-w-2xl w-full bg-white/80 backdrop-blur-md rounded-lg shadow-lg border border-gray-200 z-50 overflow-y-auto sm:max-h-[calc(100vh-8rem)]">
+                    <div className="p-4 sm:p-6">
+                      {/* Header - Sticky on mobile */}
+                      <div className="sticky top-0 bg-white/80 backdrop-blur-md -mx-4 -mt-4 px-4 pt-4 pb-2 sm:mx-0 sm:mt-0 sm:px-0 sm:pt-0 sm:pb-0 sm:relative sm:bg-transparent">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                            <FiFilter className="mr-2 text-indigo-500" />
+                            Filter Family Members
+                          </h3>
+                          <button
+                            onClick={() => setShowFilters(false)}
+                            className="p-1 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-full transition-colors"
+                            title="Close filters"
+                          >
+                            <FiX className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Filter Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                        {/* Generation Filter */}
+                        <div className="bg-gray-50/50 rounded-lg p-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <FiHash className="mr-2 text-indigo-500" />
+                            Generation
+                          </label>
+                          <select
+                            value={filters.generation}
+                            onChange={(e) =>
+                              handleFilterChange("generation", e.target.value)
+                            }
+                            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                          >
+                            <option value="">All Generations</option>
+                            {Array.from(
+                              new Set(
+                                treeData?.members.map((m) => m.generation) || []
+                              )
+                            )
+                              .sort((a, b) => a - b)
+                              .map((gen) => (
+                                <option key={gen} value={gen}>
+                                  Generation {gen}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        {/* Gender Filter */}
+                        <div className="bg-gray-50/50 rounded-lg p-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <FiUser className="mr-2 text-indigo-500" />
+                            Gender
+                          </label>
+                          <select
+                            value={filters.gender}
+                            onChange={(e) =>
+                              handleFilterChange("gender", e.target.value)
+                            }
+                            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                          >
+                            <option value="">All Genders</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+
+                        {/* Age Range Filter */}
+                        <div className="bg-gray-50/50 rounded-lg p-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <FiClock className="mr-2 text-indigo-500" />
+                            Age Range
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <input
+                                type="number"
+                                placeholder="Min"
+                                value={filters.minAge}
+                                onChange={(e) =>
+                                  handleFilterChange("minAge", e.target.value)
+                                }
+                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                              />
+                            </div>
+                            <span className="text-gray-500">to</span>
+                            <div className="flex-1">
+                              <input
+                                type="number"
+                                placeholder="Max"
+                                value={filters.maxAge}
+                                onChange={(e) =>
+                                  handleFilterChange("maxAge", e.target.value)
+                                }
+                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Spouse Filter */}
+                        <div className="bg-gray-50/50 rounded-lg p-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <FiHeart className="mr-2 text-indigo-500" />
+                            Has Spouse
+                          </label>
+                          <select
+                            value={filters.hasSpouse}
+                            onChange={(e) =>
+                              handleFilterChange("hasSpouse", e.target.value)
+                            }
+                            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                          >
+                            <option value="">All</option>
+                            <option value="yes">Has Spouse</option>
+                            <option value="no">No Spouse</option>
+                          </select>
+                        </div>
+
+                        {/* Children Filter */}
+                        <div className="bg-gray-50/50 rounded-lg p-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                            <FiUsers className="mr-2 text-indigo-500" />
+                            Has Children
+                          </label>
+                          <select
+                            value={filters.hasChildren}
+                            onChange={(e) =>
+                              handleFilterChange("hasChildren", e.target.value)
+                            }
+                            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                          >
+                            <option value="">All</option>
+                            <option value="yes">Has Children</option>
+                            <option value="no">No Children</option>
+                          </select>
+                        </div>
+
+                        {/* Active Filters Summary */}
+                        <div className="bg-indigo-50/50 rounded-lg p-4">
+                          <h4 className="text-sm font-medium text-indigo-900 mb-2">
+                            Active Filters
+                          </h4>
+                          <div className="space-y-2">
+                            {filters.generation && (
+                              <div className="flex items-center text-sm text-indigo-700">
+                                <FiHash className="mr-2" />
+                                Generation {filters.generation}
+                              </div>
+                            )}
+                            {filters.gender && (
+                              <div className="flex items-center text-sm text-indigo-700">
+                                <FiUser className="mr-2" />
+                                {filters.gender.charAt(0).toUpperCase() +
+                                  filters.gender.slice(1)}
+                              </div>
+                            )}
+                            {(filters.minAge || filters.maxAge) && (
+                              <div className="flex items-center text-sm text-indigo-700">
+                                <FiClock className="mr-2" />
+                                {filters.minAge && filters.maxAge
+                                  ? `Age ${filters.minAge}-${filters.maxAge}`
+                                  : filters.minAge
+                                  ? `Age ≥ ${filters.minAge}`
+                                  : `Age ≤ ${filters.maxAge}`}
+                              </div>
+                            )}
+                            {filters.hasSpouse && (
+                              <div className="flex items-center text-sm text-indigo-700">
+                                <FiHeart className="mr-2" />
+                                {filters.hasSpouse === "yes"
+                                  ? "Has Spouse"
+                                  : "No Spouse"}
+                              </div>
+                            )}
+                            {filters.hasChildren && (
+                              <div className="flex items-center text-sm text-indigo-700">
+                                <FiUsers className="mr-2" />
+                                {filters.hasChildren === "yes"
+                                  ? "Has Children"
+                                  : "No Children"}
+                              </div>
+                            )}
+                            {!filters.generation &&
+                              !filters.gender &&
+                              !filters.minAge &&
+                              !filters.maxAge &&
+                              !filters.hasSpouse &&
+                              !filters.hasChildren && (
+                                <div className="text-sm text-indigo-700">
+                                  No active filters
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Clear Filters Button - Sticky on mobile */}
+                      <div className="sticky bottom-0 bg-white/80 backdrop-blur-md -mx-4 -mb-4 px-4 pb-4 pt-2 mt-6 border-t border-gray-200 sm:mx-0 sm:mb-0 sm:px-0 sm:pb-0 sm:pt-4 sm:relative sm:bg-transparent">
+                        <button
+                          onClick={clearFilters}
+                          className="w-full px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center"
+                        >
+                          <FiX className="mr-2" />
+                          Clear All Filters
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
         {error ? (
           <div className="bg-red-50/80 border-l-4 border-red-400 p-4 rounded-lg shadow-lg backdrop-blur-sm">
             <div className="flex">
@@ -1002,7 +1318,7 @@ const FamilyTreePage = () => {
                 <div className="flex items-center space-x-2">
                   {userIsAdmin && (
                     <Link href="/dashboard/add-member">
-                      <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
+                      <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-sm hover:shadow-md transition-all duration-200">
                         <FiPlus className="mr-2" />
                         <span className="hidden sm:inline">Add Member</span>
                       </button>
